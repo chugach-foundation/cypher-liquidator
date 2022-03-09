@@ -1,0 +1,32 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: liquidator
+  labels:
+    app: liquidator
+spec:
+  selector:
+    matchLabels:
+      app: liquidator
+  template:
+    metadata:
+      labels:
+        app: liquidator
+    spec:
+      # This section describes the containers that make up the deployment
+      containers:
+        - name: liquidator
+          image: LOCATION-docker.pkg.dev/PROJECT_ID/REPOSITORY/IMAGE:TAG
+          env:
+            - name: CLUSTER
+              value: DEVNET
+            - name: ANCHOR_WALLET
+              value: /secrets/liqor/liqor.json
+          volumeMounts:
+            - name: liqor-secrets-volume
+              mountPath: /secrets/liqor
+              readOnly: true
+      volumes:
+        - name: liqor-secrets-volume
+          secret:
+            secretName: liqor-credentials

@@ -1,0 +1,12 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: liquidator-service
+  labels:
+    app: liquidator
+spec:
+  selector:
+    app: liquidator
+  ports:
+    - port: 8080
+      targetPort: 8080
