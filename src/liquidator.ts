@@ -9,15 +9,15 @@ export const runLiquidator = async (userAddr: PublicKey) => {
         userAddr
     );
     await user.group.loadProxies(clientProvider.client, userAddr);
-    const marginCRatio = user.getCRatio(clientProvider.client);
-    if (marginCRatio < 1.4) {
-        console.log(
-            "Found unhealthy margin account with c-ratio ( ",
-            marginCRatio,
-            " ): ",
-            userAddr.toString()
-        );
-    }
+    // const marginCRatio = user.getCRatio(clientProvider.client);
+    // if (marginCRatio < 1.4) {
+    //     console.log(
+    //         "Found unhealthy margin account with c-ratio ( ",
+    //         marginCRatio,
+    //         " ): ",
+    //         userAddr.toString()
+    //     );
+    // }
     const liqor = await clientProvider.loadLiqor();
     await liqor.tryLiquidate(user);
 };
