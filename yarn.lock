@@ -9,9 +9,9 @@
   dependencies:
     regenerator-runtime "^0.13.4"
 
-"@chugach-foundation/cypher-client@git+ssh://git@github.com:chugach-foundation/cypher-client.git#dc4650d09401ce8ddeb7f8d4ac944e98a2ee5fd3":
+"@chugach-foundation/cypher-client@git+ssh://git@github.com:chugach-foundation/cypher-client.git#430e798e3c5af943063485986216b19db602e2bb":
   version "1.0.0"
-  resolved "git+ssh://git@github.com:chugach-foundation/cypher-client.git#dc4650d09401ce8ddeb7f8d4ac944e98a2ee5fd3"
+  resolved "git+ssh://git@github.com:chugach-foundation/cypher-client.git#430e798e3c5af943063485986216b19db602e2bb"
   dependencies:
     "@project-serum/anchor" "^0.22.0"
     "@project-serum/associated-token" "^0.1.1"

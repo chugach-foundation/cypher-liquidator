@@ -12,7 +12,7 @@
     "node": "16.x.x"
   },
   "dependencies": {
-    "@chugach-foundation/cypher-client": "git+ssh://git@github.com:chugach-foundation/cypher-client.git#dc4650d09401ce8ddeb7f8d4ac944e98a2ee5fd3",
+    "@chugach-foundation/cypher-client": "git+ssh://git@github.com:chugach-foundation/cypher-client.git#430e798e3c5af943063485986216b19db602e2bb",
     "cors": "^2.8.5",
     "dotenv": "^10.0.0",
     "express": "^4.17.2",
