@@ -24,8 +24,11 @@ const run = async () => {
     while (true) {
         const userAddrs = await clientProvider.getAllUserAddresses();
         console.log("Start processing ", userAddrs.length, " users.");
-        for (const userAddr of userAddrs) {
-            await runLiquidator(userAddr);
+        for (let i = 0; i < userAddrs.length; i += 1) {
+            await runLiquidator(userAddrs[i]);
+            if (i % 100) {
+                console.log(`Processed ${i} of ${userAddrs.length} users.`);
+            }
         }
         await sleep(interval);
     }
