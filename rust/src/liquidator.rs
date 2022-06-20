@@ -1,5 +1,8 @@
 use std::{sync::Arc, time::Duration};
-use cypher::{states::{CypherGroup, CypherUser, CypherToken}, constants::QUOTE_TOKEN_IDX};
+use cypher::{
+    states::{CypherGroup, CypherUser},
+    constants::QUOTE_TOKEN_IDX
+};
 use cypher_math::Number;
 use log::{info, warn};
 use solana_account_decoder::UiAccountEncoding;
@@ -8,11 +11,18 @@ use solana_client::{
     client_error::ClientError,
     rpc_config::{
         RpcProgramAccountsConfig, RpcAccountInfoConfig, RpcTransactionConfig
-    }, rpc_filter::{RpcFilterType, Memcmp, MemcmpEncodedBytes, MemcmpEncoding}
+    },
+    rpc_filter::{
+        RpcFilterType, Memcmp, MemcmpEncodedBytes, MemcmpEncoding
+    }
 };
 use solana_sdk::{
     pubkey::Pubkey,
-    commitment_config::CommitmentConfig, hash::Hash, signature::Keypair, transaction::Transaction, instruction::Instruction
+    commitment_config::CommitmentConfig,
+    hash::Hash,
+    signature::Keypair,
+    transaction::Transaction,
+    instruction::Instruction
 };
 use dashmap::DashMap;
 use solana_transaction_status::UiTransactionEncoding;
@@ -93,6 +103,33 @@ impl Liquidator {
 
         self.run().await;
 
+        let (
+            group_res,
+            users_res,
+            meta_res
+        ) = tokio::join!(get_group_t, get_users_t, get_meta_t);
+
+        match group_res {
+            Ok(_) => (),
+            Err(e) => {
+                warn!("There was an error joining with the task that fetches the cypher group: {}", e.to_string());
+            },
+        };
+
+        match users_res {
+            Ok(_) => (),
+            Err(e) => {
+                warn!("There was an error joining with the task that fetches the cypher users: {}", e.to_string());
+            },
+        };
+
+        match meta_res {
+            Ok(_) => (),
+            Err(e) => {
+                warn!("There was an error joining with the task that fetches the chain meta: {}", e.to_string());
+            },
+        };
+
         Ok(())
     }
 
@@ -121,9 +158,15 @@ impl Liquidator {
 
                     if self.check_can_liquidate(&cypher_group).await {
                         info!("Cypher User: {} - Attempting to liquidate.", cypher_user_pubkey);
+                        
+                        let cypher_liqor = self.cypher_liqor.read().await.unwrap();
 
-                        let asset_mint = cypher_group.get_cypher_token(token_idx).mint;
-                        let liab_mint = cypher_group.get_cypher_token(QUOTE_TOKEN_IDX).mint;
+                        // the asset mint is the mint of the asset we are using from the liquidator cypher account
+                        let asset_mint_idx = self.get_liquidator_asset_mint(&cypher_group, &cypher_liqor, &self.cypher_liqor_pubkey);
+                        let asset_mint = cypher_group.get_cypher_token(asset_mint_idx).mint;
+
+                        // the liability mint is the mint of the asset we are trying to liquidate from the cypher user account
+                        let liab_mint = cypher_group.get_cypher_token(token_idx).mint;
 
                         let liq_ixs = get_liquidate_collateral_ixs(
                             &cypher_group,
@@ -283,6 +326,45 @@ impl Liquidator {
         false
     }
 
+    fn get_liquidator_asset_mint(
+        self: &Arc<Self>,
+        cypher_group: &CypherGroup,
+        cypher_liqor: &CypherUser,
+        cypher_liqor_pubkey: &Pubkey
+    ) -> usize {
+        let cypher_group_config = self.cypher_config
+                .get_group(self.liquidator_config.cluster.as_str())
+                .unwrap();
+        let tokens = &cypher_group_config.tokens;
+        
+        let mut highest_deposit: Number = Number::ZERO;
+        let mut highest_deposit_idx = 0;
+
+        for token in tokens {
+            let cypher_token = cypher_group.get_cypher_token(token.token_index);
+            let maybe_cp = cypher_liqor.get_position(token.token_index);
+            let cypher_position = match maybe_cp {
+                Ok(cp) => cp,
+                Err(_) => {
+                    continue;
+                },
+            };
+
+            let base_deposits = cypher_position.base_deposits();
+            let native_deposits = cypher_position.native_deposits(cypher_token);
+            let total_deposits = cypher_position.total_deposits(cypher_token);
+
+            info!("Cypher Liquidator: {} - Token {} - Base Deposits {} - Native Deposits {} - Total Deposits {}", cypher_liqor_pubkey, token.symbol, base_deposits, native_deposits, total_deposits);
+
+            if total_deposits > highest_deposit {
+                highest_deposit = total_deposits;
+                highest_deposit_idx = token.token_index;
+            }
+        }
+
+        highest_deposit_idx
+    }
+
     fn check_collateral(
         self: &Arc<Self>,
         cypher_group: &CypherGroup,
@@ -301,14 +383,24 @@ impl Liquidator {
 
         if margin_c_ratio < margin_maint_ratio {
             info!("Cypher User: {} - Margin C Ratio below Margin Init Ratio", cypher_user_pubkey);
+            
             let mut highest_borrow: Number = Number::ZERO;
             let mut highest_borrow_idx = 0;
 
             for token in tokens {
                 let cypher_token = cypher_group.get_cypher_token(token.token_index);
-                let cypher_position = cypher_user.get_position(token.token_index).unwrap();
+                let maybe_cp = cypher_user.get_position(token.token_index);
+                let cypher_position = match maybe_cp {
+                    Ok(cp) => cp,
+                    Err(_) => {
+                        continue;
+                    },
+                };
 
                 let borrows = cypher_position.total_borrows(cypher_token);
+                let base_borrows = cypher_position.base_borrows();
+                let native_borrows = cypher_position.native_borrows(cypher_token);
+                info!("Cypher User: {} - Token {} - CypherPosition - Base Borrows {} - Native Borrows {} - Total Borrows {}", cypher_user_pubkey, token.symbol, base_borrows, native_borrows, borrows);
 
                 if borrows > highest_borrow {
                     highest_borrow = borrows;
@@ -338,7 +430,6 @@ impl Liquidator {
             if token.token_index == QUOTE_TOKEN_IDX {
                 break;
             }
-            let cypher_token = *cypher_group.get_cypher_token(token.token_index);
 
             let market = cypher_group.get_cypher_market(token.token_index);
             let mint_maint_ratio = market.mint_maint_ratio();
@@ -422,6 +513,13 @@ impl Liquidator {
     ) {
         loop {
             let res = self.get_all_accounts().await;
+
+            match res {
+                Ok(_) => (),
+                Err(e) => {
+                    warn!("There was an error getting all cypher user accounts: {}", e.to_string());
+                },
+            };
             
             tokio::time::sleep(Duration::from_millis(15000)).await;            
         }
@@ -491,6 +589,13 @@ impl Liquidator {
         loop {
             let res = self.get_cypher_group_and_liqor().await;
             
+            match res {
+                Ok(_) => (),
+                Err(e) => {
+                    warn!("There was an error getting the cypher group and cypher liquidator user accounts: {}", e.to_string());
+                },
+            };
+            
             tokio::time::sleep(Duration::from_millis(5000)).await;
         }
     }
@@ -537,6 +642,13 @@ impl Liquidator {
     ) {
         loop {
             let res = self.get_chain_meta().await;
+            
+            match res {
+                Ok(_) => (),
+                Err(e) => {
+                    warn!("There was an error getting the chain meta data: {}", e.to_string());
+                },
+            };
             
             tokio::time::sleep(Duration::from_millis(1000)).await;
         }

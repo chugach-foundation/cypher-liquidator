@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 use std::fs::File;
 use std::io::BufReader;
 use std::error::Error;
@@ -56,35 +57,30 @@ pub struct CypherGroupConfig {
 }
 
 impl CypherGroupConfig {
-    pub fn get_market(&self, cluster: &str, market: &str) -> Option<&CypherMarketConfig> {        
+    pub fn get_market(&self, market: &str) -> Option<&CypherMarketConfig> {        
         self.markets
             .iter()
             .find(|&m| m.name.as_str() == market)
     }
     
-    pub fn get_oracle(&self, cluster: &str, symbol: &str) -> Option<&CypherOracleConfig> {        
+    pub fn get_oracle(&self, symbol: &str) -> Option<&CypherOracleConfig> {        
         self.oracles
             .iter()
             .find(|&o| o.symbol == symbol)
     }
 
-    pub fn get_mint_for_symbol(&self, cluster: &str, symbol: &str) -> Option<&CypherTokenConfig> {
+    pub fn get_mint_for_symbol(&self, symbol: &str) -> Option<&CypherTokenConfig> {
         self.tokens
             .iter()
             .find(|&t| t.symbol == symbol)
     }
 
-    pub fn get_market_index(&self, cluster: &str, market: &str) -> Option<usize> {
+    pub fn get_market_index(&self, market: &str) -> Option<usize> {
         let market = self.markets
             .iter()
             .find(|&m| m.name.as_str() == market);
 
-        let market_idx = match market {
-            Some(m) => Some(m.market_index),
-            None => None
-        };
-
-        market_idx
+        market.map(|m| m.market_index)
     }
 }
 

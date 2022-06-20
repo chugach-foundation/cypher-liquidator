@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 use solana_sdk::{
     hash::Hash, instruction::Instruction, message::Message, signature::Keypair, signer::Signer,
     transaction::Transaction,
