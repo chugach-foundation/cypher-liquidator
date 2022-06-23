@@ -223,11 +223,6 @@ impl Liquidator {
                         );
 
                         if liqor_can_liq {
-                            info!(
-                                "Cypher User: {} - Attempting to liquidate.",
-                                cypher_user_pubkey
-                            );
-
                             info!("Cypher User: {} - Asset Mint: {} - Liab Mint: {} - Attempting to liquidate.", cypher_user_pubkey, asset_mint, liab_mint);
 
                             let (
