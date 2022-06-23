@@ -18,7 +18,7 @@ impl FastTxnBuilder {
     pub fn add(&mut self, ix: Instruction) {
         self.ixs.push(ix);
     }
-    
+
     #[inline(always)]
     pub fn clear(&mut self) {
         self.ixs.clear();

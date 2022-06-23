@@ -1,6 +1,6 @@
-use std::{io::BufReader, error::Error, fs::File};
+use std::{error::Error, fs::File, io::BufReader};
 
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
