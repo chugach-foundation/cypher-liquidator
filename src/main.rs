@@ -7,12 +7,13 @@ mod utils;
 use config::*;
 use liquidator::*;
 use logging::*;
+use tokio::sync::broadcast::channel;
 use utils::*;
 
 use clap::Parser;
 use log::{info, warn};
 use solana_client::nonblocking::rpc_client::RpcClient;
-use solana_sdk::{commitment_config::CommitmentConfig, pubkey::Pubkey, signer::Signer};
+use solana_sdk::{commitment_config::CommitmentConfig, pubkey::Pubkey, signer::Signer, signature::Keypair};
 use std::{str::FromStr, sync::Arc};
 
 pub const CYPHER_CONFIG_PATH: &str = "./cfg/group.json";
@@ -37,7 +38,7 @@ async fn main() -> Result<(), LiquidatorError> {
     let liquidator_config = Arc::new(load_liquidator_config(config_path).unwrap());
     let cypher_config = Arc::new(load_cypher_config(CYPHER_CONFIG_PATH).unwrap());
 
-    let keypair = load_keypair(liquidator_config.wallet.as_str()).unwrap();
+    let keypair = Arc::new(load_keypair(liquidator_config.wallet.as_str()).unwrap());
     let pubkey = keypair.pubkey();
     info!("Loaded keypair with pubkey: {}", pubkey.to_string());
 
@@ -62,34 +63,59 @@ async fn main() -> Result<(), LiquidatorError> {
 
     let cypher_liqor_pubkey = derive_cypher_user_address(&cypher_group_key, &pubkey);
 
-    let liquidator = Arc::new(Liquidator::new(
-        Arc::clone(&rpc_client),
-        Arc::clone(&liquidator_config),
-        Arc::clone(&cypher_config),
-        cypher_group_key,
-        cypher_liqor_pubkey,
-        keypair,
-    ));
+    tokio::select! {
+        _ = run_liquidator(
+            rpc_client,
+            liquidator_config,
+            cypher_config,
+            cypher_group_key,
+            cypher_liqor_pubkey,
+            keypair,
+        ) => {},
+    };
 
-    let liq_t = tokio::spawn(async move {
-        let res = liquidator.start().await;
-        match res {
-            Ok(_) => (),
-            Err(e) => {
-                warn!("An error occurred while running the liquidator: {:?}", e);
-            }
-        }
-    });
-
-    match tokio::join!(liq_t) {
-        (Ok(_),) => (),
-        (Err(e),) => {
-            warn!(
-                "An error occurred while joining with the liquidator task: {}",
-                e.to_string()
-            );
-        }
-    }
 
     Ok(())
+}
+
+
+async fn run_liquidator(
+    rpc_client: Arc<RpcClient>,
+    liquidator_config: Arc<LiquidatorConfig>,
+    cypher_config: Arc<CypherConfig>,
+    cypher_group_key: Pubkey,
+    cypher_liqor_pubkey: Pubkey,
+    keypair: Arc<Keypair>,
+) -> Result<(), LiquidatorError> {
+    
+    loop {
+        let liquidator = Arc::new(Liquidator::new(
+            Arc::clone(&rpc_client),
+            Arc::clone(&liquidator_config),
+            Arc::clone(&cypher_config),
+            cypher_group_key,
+            cypher_liqor_pubkey,
+            Arc::clone(&keypair),
+        ));
+
+        let liq_t = tokio::spawn(async move {
+            let res = liquidator.start().await;
+            match res {
+                Ok(_) => (),
+                Err(e) => {
+                    warn!("An error occurred while running the liquidator: {:?}", e);
+                }
+            }
+        });
+
+        match tokio::join!(liq_t) {
+            (Ok(_),) => (),
+            (Err(e),) => {
+                warn!(
+                    "An error occurred while joining with the liquidator task: {}",
+                    e.to_string()
+                );
+            }
+        }
+    }
 }

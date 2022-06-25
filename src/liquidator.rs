@@ -58,7 +58,7 @@ pub struct Liquidator {
     latest_blockhash: RwLock<Hash>,
     latest_slot: RwLock<u64>,
     cypher_liqor_pubkey: Pubkey,
-    keypair: Keypair,
+    keypair: Arc<Keypair>,
 }
 
 impl Liquidator {
@@ -68,7 +68,7 @@ impl Liquidator {
         cypher_config: Arc<CypherConfig>,
         cypher_group_pubkey: Pubkey,
         cypher_liqor_pubkey: Pubkey,
-        keypair: Keypair,
+        keypair: Arc<Keypair>,
     ) -> Self {
         Self {
             client,
@@ -1151,4 +1151,6 @@ impl Liquidator {
 }
 
 #[derive(Debug, PartialEq)]
-pub enum LiquidatorError {}
+pub enum LiquidatorError {
+    ShutdownError,
+}
