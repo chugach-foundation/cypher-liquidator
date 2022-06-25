@@ -1,14 +1,32 @@
-FROM node:16-alpine
+FROM rust:1.60.0
+
+RUN set -x \
+ && apt update \
+ && apt update \
+ && apt install -y \
+      buildkite-agent \
+      clang \
+      cmake \
+      lcov \
+      libudev-dev \
+      mscgen \
+      net-tools \
+      rsync \
+      sudo \
+      unzip \
+      \
+ && apt remove -y libcurl4-openssl-dev \
+ && rustup component add rustfmt \
+ && rustup component add clippy \
+ && rustc --version \
+ && cargo --version
 
 WORKDIR /usr/src/app
 
 COPY . .
 
-RUN apk add --no-cache openssh-client git
-RUN mkdir -p -m 0600 ~/.ssh && ssh-keyscan github.com >> ~/.ssh/known_hosts
-RUN --mount=type=ssh yarn install
-RUN yarn build
+RUN cargo build --package cypher-liquidator --release
 
 EXPOSE 8080
 
-CMD ["yarn", "start"]
+CMD [ "./target/release/cypher-liquidator", "-c", "./cfg./config.json" ]
