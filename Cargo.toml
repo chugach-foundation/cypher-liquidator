@@ -10,7 +10,7 @@ solana-client = "~1.10.25"
 solana-sdk = { version = "~1.10.25" }  
 solana-account-decoder = "~1.10.25"
 solana-transaction-status = "~1.10.25"
-cypher = { path = "../cypher-protocol/programs/cypher", features = ["no-entrypoint"] }
+cypher = { path = "../cypher-protocol/programs/cypher", features = ["no-entrypoint", "mainnet-beta"] }
 cypher-tester = { path="../cypher-protocol/tester" }
 serum_dex = { git = "https://github.com/chugach-foundation/serum-dex.git", rev="2fab8b9", features = ["fuzz", "no-entrypoint"] }
 jet-proto-math = { git = "https://github.com/chugach-foundation/jet-program-libraries.git", rev="ac8909b" }
