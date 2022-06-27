@@ -584,10 +584,12 @@ impl Liquidator {
                     }
                 };
 
-                
                 let total_borrows = cypher_position.total_borrows(cypher_token);
                 let total_deposits = cypher_position.total_deposits(cypher_token);
-                info!("[LIQ] LIQOR: {} - {} - Position - Total Borrows: {} - Total Deposits: {}", self.cypher_liqor_pubkey, token.symbol, total_borrows, total_deposits);
+                info!(
+                    "[LIQ] LIQOR: {} - {} - Position - Total Borrows: {} - Total Deposits: {}",
+                    self.cypher_liqor_pubkey, token.symbol, total_borrows, total_deposits
+                );
 
                 if token.token_index != QUOTE_TOKEN_IDX {
                     let maybe_ca = cypher_liqor.get_c_asset(token.token_index);
@@ -598,7 +600,13 @@ impl Liquidator {
                         }
                     };
 
-                    info!("[LIQ] LIQOR: {} - {} - cAsset -  Mint Collateral {} - Debt Shares {}", self.cypher_liqor_pubkey, token.symbol, cypher_asset.collateral, cypher_asset.debt_shares);
+                    info!(
+                        "[LIQ] LIQOR: {} - {} - cAsset -  Mint Collateral {} - Debt Shares {}",
+                        self.cypher_liqor_pubkey,
+                        token.symbol,
+                        cypher_asset.collateral,
+                        cypher_asset.debt_shares
+                    );
                 };
             }
         }
@@ -712,10 +720,12 @@ impl Liquidator {
                         }
                     };
 
-                    
                     let total_borrows = cypher_position.total_borrows(cypher_token);
                     let total_deposits = cypher_position.total_deposits(cypher_token);
-                    info!("[LIQ] Liqee: {} - {} - Position - Total Borrows: {} - Total Deposits: {}", cypher_user_pubkey, token.symbol, total_borrows, total_deposits);
+                    info!(
+                        "[LIQ] Liqee: {} - {} - Position - Total Borrows: {} - Total Deposits: {}",
+                        cypher_user_pubkey, token.symbol, total_borrows, total_deposits
+                    );
 
                     if token.token_index != QUOTE_TOKEN_IDX {
                         let maybe_ca = cypher_user.get_c_asset(token.token_index);
@@ -726,7 +736,13 @@ impl Liquidator {
                             }
                         };
 
-                        info!("[LIQ] Liqee: {} - {} - cAsset -  Mint Collateral {} - Debt Shares {}", cypher_user_pubkey, token.symbol, cypher_asset.collateral, cypher_asset.debt_shares);
+                        info!(
+                            "[LIQ] Liqee: {} - {} - cAsset -  Mint Collateral {} - Debt Shares {}",
+                            cypher_user_pubkey,
+                            token.symbol,
+                            cypher_asset.collateral,
+                            cypher_asset.debt_shares
+                        );
                     };
                 }
             }
@@ -872,7 +888,10 @@ impl Liquidator {
 
                 let total_borrows = cypher_position.total_borrows(cypher_token);
                 let total_deposits = cypher_position.total_deposits(cypher_token);
-                info!("[LIQ] Liqee: {} - {} - Position - Total Borrows: {} - Total Deposits: {}", cypher_user_pubkey, token.symbol, total_borrows, total_deposits);
+                info!(
+                    "[LIQ] Liqee: {} - {} - Position - Total Borrows: {} - Total Deposits: {}",
+                    cypher_user_pubkey, token.symbol, total_borrows, total_deposits
+                );
 
                 if token.token_index != QUOTE_TOKEN_IDX {
                     let maybe_ca = cypher_user.get_c_asset(token.token_index);
@@ -883,7 +902,13 @@ impl Liquidator {
                         }
                     };
 
-                    info!("[LIQ] Liqee: {} - {} - cAsset -  Mint Collateral {} - Debt Shares {}", cypher_user_pubkey, token.symbol, cypher_asset.collateral, cypher_asset.debt_shares);
+                    info!(
+                        "[LIQ] Liqee: {} - {} - cAsset -  Mint Collateral {} - Debt Shares {}",
+                        cypher_user_pubkey,
+                        token.symbol,
+                        cypher_asset.collateral,
+                        cypher_asset.debt_shares
+                    );
                 };
             }
         }
