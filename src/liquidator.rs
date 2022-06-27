@@ -587,7 +587,7 @@ impl Liquidator {
                 let total_borrows = cypher_position.total_borrows(cypher_token);
                 let total_deposits = cypher_position.total_deposits(cypher_token);
                 info!(
-                    "[LIQ] LIQOR: {} - {} - Position - Total Borrows: {} - Total Deposits: {}",
+                    "[LIQ] LIQOR: {} - {} Position - Total Borrows: {} - Total Deposits: {}",
                     self.cypher_liqor_pubkey, token.symbol, total_borrows, total_deposits
                 );
 
@@ -601,7 +601,7 @@ impl Liquidator {
                     };
 
                     info!(
-                        "[LIQ] LIQOR: {} - {} - cAsset -  Mint Collateral {} - Debt Shares {}",
+                        "[LIQ] LIQOR: {} - {} cAsset -  Mint Collateral: {} - Debt Shares: {}",
                         self.cypher_liqor_pubkey,
                         token.symbol,
                         cypher_asset.collateral,
@@ -723,7 +723,7 @@ impl Liquidator {
                     let total_borrows = cypher_position.total_borrows(cypher_token);
                     let total_deposits = cypher_position.total_deposits(cypher_token);
                     info!(
-                        "[LIQ] Liqee: {} - {} - Position - Total Borrows: {} - Total Deposits: {}",
+                        "[LIQ] Liqee: {} - {} Position - Total Borrows: {} - Total Deposits: {}",
                         cypher_user_pubkey, token.symbol, total_borrows, total_deposits
                     );
 
@@ -737,7 +737,7 @@ impl Liquidator {
                         };
 
                         info!(
-                            "[LIQ] Liqee: {} - {} - cAsset -  Mint Collateral {} - Debt Shares {}",
+                            "[LIQ] Liqee: {} - {} cAsset -  Mint Collateral {} - Debt Shares {}",
                             cypher_user_pubkey,
                             token.symbol,
                             cypher_asset.collateral,
@@ -889,7 +889,7 @@ impl Liquidator {
                 let total_borrows = cypher_position.total_borrows(cypher_token);
                 let total_deposits = cypher_position.total_deposits(cypher_token);
                 info!(
-                    "[LIQ] Liqee: {} - {} - Position - Total Borrows: {} - Total Deposits: {}",
+                    "[LIQ] Liqee: {} - {} Position - Total Borrows: {} - Total Deposits: {}",
                     cypher_user_pubkey, token.symbol, total_borrows, total_deposits
                 );
 
@@ -903,7 +903,7 @@ impl Liquidator {
                     };
 
                     info!(
-                        "[LIQ] Liqee: {} - {} - cAsset -  Mint Collateral {} - Debt Shares {}",
+                        "[LIQ] Liqee: {} - {} cAsset -  Mint Collateral {} - Debt Shares {}",
                         cypher_user_pubkey,
                         token.symbol,
                         cypher_asset.collateral,
