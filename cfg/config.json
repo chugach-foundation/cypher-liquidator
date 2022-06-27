@@ -1,6 +1,6 @@
 {
     "wallet": "C:\\Users\\warde\\.config\\solana\\default-id.json",
-    "cluster": "devnet",
+    "cluster": "mainnet",
     "logSimulations": false,
     "logLiqeeHealths": false,
     "logLiqorHealth": false
