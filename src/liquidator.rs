@@ -24,12 +24,14 @@ use solana_sdk::{
     transaction::Transaction,
 };
 use solana_transaction_status::UiTransactionEncoding;
-use std::{cmp::min, sync::Arc, time::Duration};
+use std::{sync::Arc, time::Duration};
 use tokio::sync::RwLock;
 
 use crate::{
+    chain_meta_service::ChainMetaService,
     config::{cypher_config::CypherConfig, liquidator_config::LiquidatorConfig},
     fast_tx_builder::FastTxnBuilder,
+    simulation::simulate_liquidate_collateral,
     utils::{
         derive_open_orders_address, get_cancel_order_ix, get_liquidate_collateral_ixs,
         get_liquidate_market_collateral_ixs, get_open_orders, get_serum_market,
@@ -51,12 +53,11 @@ pub struct Liquidator {
     client: Arc<RpcClient>,
     liquidator_config: Arc<LiquidatorConfig>,
     cypher_config: Arc<CypherConfig>,
+    chain_meta_service: Arc<ChainMetaService>,
     cypher_group_pubkey: Pubkey,
     cypher_group: RwLock<Option<CypherGroup>>,
     cypher_users: RwLock<DashMap<Pubkey, CypherUser>>,
     cypher_liqor: RwLock<Option<CypherUser>>,
-    latest_blockhash: RwLock<Hash>,
-    latest_slot: RwLock<u64>,
     cypher_liqor_pubkey: Pubkey,
     keypair: Arc<Keypair>,
 }
@@ -66,6 +67,7 @@ impl Liquidator {
         client: Arc<RpcClient>,
         liquidator_config: Arc<LiquidatorConfig>,
         cypher_config: Arc<CypherConfig>,
+        chain_meta_service: Arc<ChainMetaService>,
         cypher_group_pubkey: Pubkey,
         cypher_liqor_pubkey: Pubkey,
         keypair: Arc<Keypair>,
@@ -74,14 +76,13 @@ impl Liquidator {
             client,
             liquidator_config,
             cypher_config,
+            chain_meta_service,
             cypher_group_pubkey,
             keypair,
             cypher_liqor_pubkey,
             cypher_liqor: RwLock::new(None),
             cypher_group: RwLock::new(None),
             cypher_users: RwLock::new(DashMap::new()),
-            latest_blockhash: RwLock::new(Hash::default()),
-            latest_slot: RwLock::new(u64::default()),
         }
     }
 
@@ -98,20 +99,15 @@ impl Liquidator {
             users_self.get_all_accounts_replay().await;
         });
 
-        let meta_self = Arc::clone(&aself);
-        let get_meta_t = tokio::spawn(async move {
-            meta_self.get_chain_meta_replay().await;
-        });
-
         self.run().await;
 
-        let (group_res, users_res, meta_res) = tokio::join!(get_group_t, get_users_t, get_meta_t);
+        let (group_res, users_res) = tokio::join!(get_group_t, get_users_t);
 
         match group_res {
             Ok(_) => (),
             Err(e) => {
                 warn!(
-                    "There was an error joining with the task that fetches the cypher group: {}",
+                    "[LIQ] There was an error joining with the task that fetches the cypher group: {}",
                     e.to_string()
                 );
             }
@@ -121,17 +117,7 @@ impl Liquidator {
             Ok(_) => (),
             Err(e) => {
                 warn!(
-                    "There was an error joining with the task that fetches the cypher users: {}",
-                    e.to_string()
-                );
-            }
-        };
-
-        match meta_res {
-            Ok(_) => (),
-            Err(e) => {
-                warn!(
-                    "There was an error joining with the task that fetches the chain meta: {}",
+                    "[LIQ] There was an error joining with the task that fetches the cypher users: {}",
                     e.to_string()
                 );
             }
@@ -162,7 +148,7 @@ impl Liquidator {
                     .await;
                 if check.can_liquidate {
                     info!(
-                        "Cypher User: {} - Collateral is liquidatable.",
+                        "[LIQ] Cypher User: {} - Collateral is liquidatable.",
                         cypher_user_pubkey
                     );
 
@@ -180,7 +166,7 @@ impl Liquidator {
                         match res {
                             Ok(_) => (),
                             Err(e) => {
-                                warn!("Failed to submit transaction: {}", e.to_string());
+                                warn!("[LIQ] Failed to submit transaction: {}", e.to_string());
                             }
                         }
                         continue;
@@ -202,7 +188,7 @@ impl Liquidator {
                         match res {
                             Ok(_) => (),
                             Err(e) => {
-                                warn!("Failed to submit transaction: {}", e.to_string());
+                                warn!("[LIQ] Failed to submit transaction: {}", e.to_string());
                             }
                         }
                         continue;
@@ -223,7 +209,7 @@ impl Liquidator {
                         );
 
                         if liqor_can_liq {
-                            info!("Cypher User: {} - Asset Mint: {} - Liab Mint: {} - Attempting to liquidate.", cypher_user_pubkey, asset_mint, liab_mint);
+                            info!("[LIQ] Cypher User: {} - Asset Mint: {} - Liab Mint: {} - Attempting to liquidate.", cypher_user_pubkey, asset_mint, liab_mint);
 
                             let (
                                 repay_amount,
@@ -231,7 +217,7 @@ impl Liquidator {
                                 market_insurance_debit,
                                 global_insurance_credit,
                                 global_insurance_debit,
-                            ) = self.simulate_liquidate_collateral(
+                            ) = simulate_liquidate_collateral(
                                 &cypher_group,
                                 &cypher_liqor,
                                 &cypher_user,
@@ -257,13 +243,13 @@ impl Liquidator {
                                 &self.keypair,
                             );
 
-                            let res = self
-                                .submit_transactions(liq_ixs, *self.latest_blockhash.read().await)
-                                .await;
+                            let blockhash = self.chain_meta_service.get_latest_blockhash().await;
+
+                            let res = self.submit_transactions(liq_ixs, blockhash).await;
                             match res {
                                 Ok(_) => (),
                                 Err(e) => {
-                                    warn!("Failed to submit transaction: {}", e.to_string());
+                                    warn!("[LIQ] Failed to submit transaction: {}", e.to_string());
                                 }
                             }
                         }
@@ -276,7 +262,7 @@ impl Liquidator {
                     .await;
                 if can_liq {
                     info!(
-                        "Cypher User: {} - Market collateral is liquidatable.",
+                        "[LIQ] Cypher User: {} - Market collateral is liquidatable.",
                         cypher_user_pubkey
                     );
 
@@ -285,7 +271,7 @@ impl Liquidator {
 
                     if self.check_can_liquidate(&cypher_group).await {
                         info!(
-                            "Cypher User: {} - Attempting to liquidate.",
+                            "[LIQ] Cypher User: {} - Attempting to liquidate.",
                             cypher_user_pubkey
                         );
 
@@ -296,7 +282,7 @@ impl Liquidator {
                         let cypher_mkt =
                             cypher_group_config.get_market_by_index(token_idx).unwrap();
                         let cypher_tok = cypher_group_config.get_token_by_index(token_idx).unwrap();
-                        info!("Cypher User: {} - Cypher Market: {} - Cypher Token: {} - C Asset Mint: {} - Dex Market: {} - Attempting to liquidate.", cypher_user_pubkey, cypher_mkt.name, cypher_tok.symbol, cypher_token.mint, cypher_market.dex_market);
+                        info!("[LIQ] Cypher User: {} - Cypher Market: {} - Cypher Token: {} - C Asset Mint: {} - Dex Market: {} - Attempting to liquidate.", cypher_user_pubkey, cypher_mkt.name, cypher_tok.symbol, cypher_token.mint, cypher_market.dex_market);
 
                         let liq_ixs = get_liquidate_market_collateral_ixs(
                             &cypher_group,
@@ -307,13 +293,13 @@ impl Liquidator {
                             &self.keypair,
                         );
 
-                        let res = self
-                            .submit_transactions(liq_ixs, *self.latest_blockhash.read().await)
-                            .await;
+                        let blockhash = self.chain_meta_service.get_latest_blockhash().await;
+
+                        let res = self.submit_transactions(liq_ixs, blockhash).await;
                         match res {
                             Ok(_) => (),
                             Err(e) => {
-                                warn!("Failed to submit transaction: {}", e.to_string());
+                                warn!("[LIQ] Failed to submit transaction: {}", e.to_string());
                             }
                         }
                     }
@@ -409,7 +395,7 @@ impl Liquidator {
                 match res {
                     Ok(_) => (),
                     Err(e) => {
-                        warn!("There was an error submitting transaction and waiting for confirmation: {}", e.to_string());
+                        warn!("[LIQ] There was an error submitting transaction and waiting for confirmation: {}", e.to_string());
                         return Err(e);
                     }
                 }
@@ -425,7 +411,7 @@ impl Liquidator {
             match res {
                 Ok(_) => (),
                 Err(e) => {
-                    warn!("There was an error submitting transaction and waiting for confirmation: {}", e.to_string());
+                    warn!("[LIQ] There was an error submitting transaction and waiting for confirmation: {}", e.to_string());
                     return Err(e);
                 }
             }
@@ -449,14 +435,14 @@ impl Liquidator {
         let signature = match submit_res {
             Ok(s) => {
                 info!(
-                    "Successfully submitted transaction. Transaction signature: {}",
+                    "[LIQ] Successfully submitted transaction. Transaction signature: {}",
                     s.to_string()
                 );
                 s
             }
             Err(e) => {
                 warn!(
-                    "There was an error submitting transaction: {}",
+                    "[LIQ] There was an error submitting transaction: {}",
                     e.to_string()
                 );
                 return Err(e);
@@ -501,41 +487,43 @@ impl Liquidator {
         let margin_c_ratio = cypher_liqor.get_margin_c_ratio(cypher_group).unwrap();
 
         info!(
-            "CYPHER LIQUIDATOR: {} - Margin C Ratio: {} - Margin Init Ratio: {}",
+            "[LIQ] CYPHER LIQUIDATOR: {} - Margin C Ratio: {} - Margin Init Ratio: {}",
             &self.cypher_liqor_pubkey, margin_c_ratio, margin_init_ratio
         );
 
-        for token in tokens {
-            let cypher_token = cypher_group.get_cypher_token(token.token_index);
-            let maybe_cp = cypher_liqor.get_position(token.token_index);
-            let cypher_position = match maybe_cp {
-                Ok(cp) => cp,
-                Err(_) => {
-                    continue;
-                }
-            };
-
-            let borrows = cypher_position.total_borrows(cypher_token);
-            let base_borrows = cypher_position.base_borrows();
-            let native_borrows = cypher_position.native_borrows(cypher_token);
-            info!("CYPHER LIQUIDATOR: {} - Token {} - CypherPosition - Base Borrows {} - Native Borrows {} - Total Borrows {}", self.cypher_liqor_pubkey, token.symbol, base_borrows, native_borrows, borrows);
-
-            let base_deposits = cypher_position.base_deposits();
-            let native_deposits = cypher_position.native_deposits(cypher_token);
-            let total_deposits = cypher_position.total_deposits(cypher_token);
-            info!("CYPHER LIQUIDATOR: {} - Token {} - CypherPosition - Base Deposits {} - Native Deposits {} - Total Deposits {}", self.cypher_liqor_pubkey, token.symbol, base_deposits, native_deposits, total_deposits);
-
-            if token.token_index != QUOTE_TOKEN_IDX {
-                let maybe_ca = cypher_liqor.get_c_asset(token.token_index);
-                let cypher_asset = match maybe_ca {
-                    Ok(ca) => ca,
+        if self.liquidator_config.log_account_healths {
+            for token in tokens {
+                let cypher_token = cypher_group.get_cypher_token(token.token_index);
+                let maybe_cp = cypher_liqor.get_position(token.token_index);
+                let cypher_position = match maybe_cp {
+                    Ok(cp) => cp,
                     Err(_) => {
                         continue;
                     }
                 };
 
-                info!("CYPHER LIQUIDATOR: {} - Token {} - CypherAsset -  Mint Collateral {} - Debt Shares {}", self.cypher_liqor_pubkey, token.symbol, cypher_asset.collateral, cypher_asset.debt_shares);
-            };
+                let borrows = cypher_position.total_borrows(cypher_token);
+                let base_borrows = cypher_position.base_borrows();
+                let native_borrows = cypher_position.native_borrows(cypher_token);
+                info!("[LIQ] CYPHER LIQUIDATOR: {} - Token {} - CypherPosition - Base Borrows {} - Native Borrows {} - Total Borrows {}", self.cypher_liqor_pubkey, token.symbol, base_borrows, native_borrows, borrows);
+
+                let base_deposits = cypher_position.base_deposits();
+                let native_deposits = cypher_position.native_deposits(cypher_token);
+                let total_deposits = cypher_position.total_deposits(cypher_token);
+                info!("[LIQ] CYPHER LIQUIDATOR: {} - Token {} - CypherPosition - Base Deposits {} - Native Deposits {} - Total Deposits {}", self.cypher_liqor_pubkey, token.symbol, base_deposits, native_deposits, total_deposits);
+
+                if token.token_index != QUOTE_TOKEN_IDX {
+                    let maybe_ca = cypher_liqor.get_c_asset(token.token_index);
+                    let cypher_asset = match maybe_ca {
+                        Ok(ca) => ca,
+                        Err(_) => {
+                            continue;
+                        }
+                    };
+
+                    info!("[LIQ] CYPHER LIQUIDATOR: {} - Token {} - CypherAsset -  Mint Collateral {} - Debt Shares {}", self.cypher_liqor_pubkey, token.symbol, cypher_asset.collateral, cypher_asset.debt_shares);
+                };
+            }
         }
 
         if margin_c_ratio >= margin_init_ratio {
@@ -562,19 +550,22 @@ impl Liquidator {
 
         if margin_c_ratio < 2_u64.into() {
             info!(
-                "Cypher User: {} - Margin C Ratio: {} - Margin Maintenance Ratio: {}",
+                "[LIQ] Cypher User: {} - Margin C Ratio: {} - Margin Maintenance Ratio: {}.",
                 cypher_user_pubkey, margin_c_ratio, margin_maint_ratio
             );
         }
 
         if margin_c_ratio < margin_maint_ratio {
             info!(
-                "Cypher User: {} - Margin C Ratio below Margin Maintenance Ratio",
+                "[LIQ] Cypher User: {} - Margin C Ratio below Margin Maintenance Ratio.",
                 cypher_user_pubkey
             );
 
             if cypher_user.is_bankrupt(cypher_group).unwrap() {
-                info!("Cypher User: {} - USER IS BANKRUPT", cypher_user_pubkey);
+                info!(
+                    "[LIQ] Cypher User: {} - USER IS BANKRUPT!",
+                    cypher_user_pubkey
+                );
             }
 
             let quote_position = cypher_user.get_position(QUOTE_TOKEN_IDX).unwrap();
@@ -600,7 +591,7 @@ impl Liquidator {
                         Ok(o) => o,
                         Err(e) => {
                             warn!(
-                                "An error occurred while fetching open orders account: {}",
+                                "[LIQ] An error occurred while fetching open orders account: {}",
                                 e.to_string()
                             );
                             return LiquidationCheck {
@@ -616,7 +607,7 @@ impl Liquidator {
                     if cypher_position.base_borrows() > Number::ZERO
                         && asset.oo_info.coin_total != 0
                     {
-                        info!("Cypher User: {} - User has token borrows and coin unsettled funds. Asset: {} - Coin Total: {} - Must cancel orders and settle funds before liquidating.", cypher_user_pubkey, cypher_token.mint, asset.oo_info.coin_total);
+                        info!("[LIQ] Cypher User: {} - User has token borrows and coin unsettled funds. Asset: {} - Coin Total: {} - Must cancel orders and settle funds before liquidating.", cypher_user_pubkey, cypher_token.mint, asset.oo_info.coin_total);
 
                         return LiquidationCheck {
                             can_liquidate: true,
@@ -629,7 +620,7 @@ impl Liquidator {
                     }
 
                     if has_quote_borrows && asset.oo_info.pc_total != 0 {
-                        info!("Cypher User: {} - User has quote borrows and price coin funds. Asset: {} - Price Coin Total: {} - Must cancel orders and settle funds before liquidating.", cypher_user_pubkey, quote_mint::id(), asset.oo_info.pc_total);
+                        info!("[LIQ] Cypher User: {} - User has quote borrows and price coin funds. Asset: {} - Price Coin Total: {} - Must cancel orders and settle funds before liquidating.", cypher_user_pubkey, quote_mint::id(), asset.oo_info.pc_total);
 
                         return LiquidationCheck {
                             can_liquidate: true,
@@ -643,37 +634,39 @@ impl Liquidator {
                 }
             }
 
-            for token in tokens {
-                let cypher_token = cypher_group.get_cypher_token(token.token_index);
-                let maybe_cp = cypher_user.get_position(token.token_index);
-                let cypher_position = match maybe_cp {
-                    Ok(cp) => cp,
-                    Err(_) => {
-                        continue;
-                    }
-                };
-
-                let borrows = cypher_position.total_borrows(cypher_token);
-                let base_borrows = cypher_position.base_borrows();
-                let native_borrows = cypher_position.native_borrows(cypher_token);
-                info!("Cypher User: {} - Token {} - CypherPosition - Base Borrows {} - Native Borrows {} - Total Borrows {}", cypher_user_pubkey, token.symbol, base_borrows, native_borrows, borrows);
-
-                let base_deposits = cypher_position.base_deposits();
-                let native_deposits = cypher_position.native_deposits(cypher_token);
-                let total_deposits = cypher_position.total_deposits(cypher_token);
-                info!("Cypher User: {} - Token {} - CypherPosition - Base Deposits {} - Native Deposits {} - Total Deposits {}", cypher_user_pubkey, token.symbol, base_deposits, native_deposits, total_deposits);
-
-                if token.token_index != QUOTE_TOKEN_IDX {
-                    let maybe_ca = cypher_user.get_c_asset(token.token_index);
-                    let cypher_asset = match maybe_ca {
-                        Ok(ca) => ca,
+            if self.liquidator_config.log_account_healths {
+                for token in tokens {
+                    let cypher_token = cypher_group.get_cypher_token(token.token_index);
+                    let maybe_cp = cypher_user.get_position(token.token_index);
+                    let cypher_position = match maybe_cp {
+                        Ok(cp) => cp,
                         Err(_) => {
                             continue;
                         }
                     };
 
-                    info!("Cypher User: {} - Token {} - CypherAsset -  Mint Collateral {} - Debt Shares {}", cypher_user_pubkey, token.symbol, cypher_asset.collateral, cypher_asset.debt_shares);
-                };
+                    let borrows = cypher_position.total_borrows(cypher_token);
+                    let base_borrows = cypher_position.base_borrows();
+                    let native_borrows = cypher_position.native_borrows(cypher_token);
+                    info!("[LIQ] Cypher User: {} - Token {} - CypherPosition - Base Borrows {} - Native Borrows {} - Total Borrows {}", cypher_user_pubkey, token.symbol, base_borrows, native_borrows, borrows);
+
+                    let base_deposits = cypher_position.base_deposits();
+                    let native_deposits = cypher_position.native_deposits(cypher_token);
+                    let total_deposits = cypher_position.total_deposits(cypher_token);
+                    info!("[LIQ] Cypher User: {} - Token {} - CypherPosition - Base Deposits {} - Native Deposits {} - Total Deposits {}", cypher_user_pubkey, token.symbol, base_deposits, native_deposits, total_deposits);
+
+                    if token.token_index != QUOTE_TOKEN_IDX {
+                        let maybe_ca = cypher_user.get_c_asset(token.token_index);
+                        let cypher_asset = match maybe_ca {
+                            Ok(ca) => ca,
+                            Err(_) => {
+                                continue;
+                            }
+                        };
+
+                        info!("[LIQ] Cypher User: {} - Token {} - CypherAsset -  Mint Collateral {} - Debt Shares {}", cypher_user_pubkey, token.symbol, cypher_asset.collateral, cypher_asset.debt_shares);
+                    };
+                }
             }
 
             return LiquidationCheck {
@@ -710,8 +703,9 @@ impl Liquidator {
         );
         let ixs = vec![settle_ix];
 
-        self.submit_transactions(ixs, *self.latest_blockhash.read().await)
-            .await
+        let blockhash = self.chain_meta_service.get_latest_blockhash().await;
+
+        self.submit_transactions(ixs, blockhash).await
     }
 
     async fn cancel_user_orders(
@@ -748,119 +742,9 @@ impl Liquidator {
             ixs.push(cancel_ix);
         }
 
-        self.submit_transactions(ixs, *self.latest_blockhash.read().await)
-            .await
-    }
+        let blockhash = self.chain_meta_service.get_latest_blockhash().await;
 
-    fn simulate_liquidate_collateral(
-        self: &Arc<Self>,
-        cypher_group: &CypherGroup,
-        cypher_liqor_user: &CypherUser,
-        cypher_liqee_user: &CypherUser,
-        asset_mint: Pubkey,
-        liab_mint: Pubkey,
-    ) -> (u64, u64, u64, u64, u64) {
-        self.calc_collateral_liquidation(
-            cypher_group,
-            cypher_liqor_user,
-            cypher_liqee_user,
-            asset_mint,
-            liab_mint,
-        )
-    }
-
-    fn get_token_info(self: &Arc<Self>, group: &CypherGroup, token_mint: Pubkey) -> (usize, u64) {
-        if token_mint == quote_mint::ID {
-            return (QUOTE_TOKEN_IDX, 1_u64);
-        }
-        let token_idx = group.get_token_idx(token_mint).unwrap();
-        let market = group.get_cypher_market(token_idx);
-        (token_idx, market.market_price)
-    }
-
-    fn calc_collateral_liquidation(
-        self: &Arc<Self>,
-        group: &CypherGroup,
-        liqor_user: &CypherUser,
-        liqee_user: &CypherUser,
-        asset_mint: Pubkey,
-        liab_mint: Pubkey,
-    ) -> (u64, u64, u64, u64, u64) {
-        let (asset_token_idx, asset_price) = self.get_token_info(group, asset_mint);
-        let (liab_token_idx, liab_price) = self.get_token_info(group, liab_mint);
-
-        let target_ratio = group.margin_init_ratio();
-        let liqor_fee = group.liq_liqor_fee();
-        let insurance_fee = group.liq_insurance_fee();
-        let excess_liabs_value = {
-            let assets_value = liqee_user.get_assets_value(group).unwrap();
-            let liabs_value = liqee_user.get_liabs_value(group).unwrap();
-            (liabs_value * target_ratio - assets_value) / (target_ratio - liqor_fee - insurance_fee)
-        };
-        let loan_value_in_position = liqee_user
-            .get_position(liab_token_idx)
-            .unwrap()
-            .total_borrows(group.get_cypher_token(liab_token_idx))
-            * liab_price;
-        let max_repay_value = min(excess_liabs_value, loan_value_in_position);
-
-        let is_bankrupt = liqee_user.is_bankrupt(group).unwrap();
-        if is_bankrupt {
-            assert_eq!(asset_mint, quote_mint::ID);
-            if liab_mint == quote_mint::ID {
-                let repay_amount = min(max_repay_value.as_u64(0), group.insurance_fund);
-                return (repay_amount, 0, 0, 0, repay_amount);
-            }
-        }
-
-        let max_value_for_swap = if is_bankrupt {
-            let liab_market = group.get_cypher_market(liab_token_idx);
-            Number::from(liab_market.insurance_fund) / liqor_fee
-        } else {
-            let asset_position_value = liqee_user
-                .get_position(asset_token_idx)
-                .unwrap()
-                .total_deposits(group.get_cypher_token(asset_token_idx))
-                .as_u64(0)
-                * asset_price;
-            Number::from(asset_position_value) / (liqor_fee + insurance_fee)
-        };
-        let liqor_repay_position_value = liqor_user
-            .get_position(liab_token_idx)
-            .unwrap()
-            .total_deposits(group.get_cypher_token(liab_token_idx))
-            * liab_price;
-        let max_liab_swap_value = min(liqor_repay_position_value, max_value_for_swap);
-
-        let repay_value = min(max_repay_value, max_liab_swap_value);
-        let repay_amount = (repay_value / liab_price).as_u64(0);
-        let repay_value = Number::from(repay_amount * liab_price);
-        let liqor_credit_value = repay_value * liqor_fee;
-        let (liqee_asset_debit, market_insurance_debit, global_insurance_credit) = if is_bankrupt {
-            if liab_mint == quote_mint::ID {
-                unreachable!()
-            } else {
-                (0, liqor_credit_value.as_u64(0), 0)
-            }
-        } else {
-            let global_insurance_credit_value = repay_value * insurance_fee;
-            let liqee_debit_value = liqor_credit_value + global_insurance_credit_value;
-            let liqee_asset_debit = (liqee_debit_value / asset_price).as_u64_ceil(0);
-            (
-                liqee_asset_debit,
-                0,
-                global_insurance_credit_value.as_u64(0),
-            )
-        };
-
-        let global_insurance_debit = 0;
-        (
-            repay_amount,
-            liqee_asset_debit,
-            market_insurance_debit,
-            global_insurance_credit,
-            global_insurance_debit,
-        )
+        self.submit_transactions(ixs, blockhash).await
     }
 
     async fn check_market_collateral(
@@ -874,88 +758,92 @@ impl Liquidator {
             .get_group(self.liquidator_config.cluster.as_str())
             .unwrap();
         let tokens = &cypher_group_config.tokens;
-        let slot = *self.latest_slot.read().await;
+        let slot = self.chain_meta_service.get_latest_slot().await;
+        let mut liquidatable: bool = false;
+        let mut token_index: usize = usize::default();
 
         for token in tokens {
             if token.token_index == QUOTE_TOKEN_IDX {
                 break;
             }
 
-            let market = cypher_group.get_cypher_market(token.token_index);
-            let mint_maint_ratio = market.mint_maint_ratio();
+            let cypher_market = cypher_group.get_cypher_market(token.token_index);
+            let cypher_token = cypher_group.get_cypher_token(token.token_index);
+            let mint_maint_ratio = cypher_market.mint_maint_ratio();
 
             let maybe_uca = cypher_user.get_c_asset(token.token_index);
             let user_c_asset = match maybe_uca {
                 Ok(u) => u,
                 Err(_) => {
-                    //warn!("Cypher User: {} - Could not get User C Asset.", cypher_user_pubkey);
                     continue;
                 }
             };
-            let maybe_amcr = user_c_asset.get_mint_c_ratio(market, slot, true);
+            let maybe_amcr = user_c_asset.get_mint_c_ratio(cypher_market, slot, true);
             let asset_mint_c_ratio = match maybe_amcr {
                 Ok(amcr) => amcr,
                 Err(_) => {
-                    //warn!("Cypher User: {} - Could not get Mint C Ratio for {}", cypher_user_pubkey, market.dex_market);
                     continue;
                 }
             };
 
             if asset_mint_c_ratio < 2_u64.into() {
                 info!(
-                    "Cypher User: {} - Asset Mint C Ratio: {} - Mint Maintenance Ratio: {}",
+                    "[LIQ] Cypher User: {} - Asset Mint C Ratio: {} - Mint Maintenance Ratio: {}",
                     cypher_user_pubkey, asset_mint_c_ratio, mint_maint_ratio
                 );
             }
 
             if asset_mint_c_ratio < mint_maint_ratio {
                 info!(
-                    "Cypher User: {} - Margin C Ratio below Mint Maintenance Ratio",
+                    "[LIQ] Cypher User: {} - Margin C Ratio below Mint Maintenance Ratio.",
                     cypher_user_pubkey
                 );
 
                 if cypher_user.is_bankrupt(cypher_group).unwrap() {
-                    info!("Cypher User: {} - USER IS BANKRUPT", cypher_user_pubkey);
+                    info!(
+                        "[LIQ] Cypher User: {} - USER IS BANKRUPT!",
+                        cypher_user_pubkey
+                    );
                 }
 
-                for token in tokens {
-                    let cypher_token = cypher_group.get_cypher_token(token.token_index);
-                    let maybe_cp = cypher_user.get_position(token.token_index);
-                    let cypher_position = match maybe_cp {
-                        Ok(cp) => cp,
+                liquidatable = true;
+                token_index = token.token_index;
+            }
+
+            if self.liquidator_config.log_account_healths {
+                let maybe_cp = cypher_user.get_position(token.token_index);
+                let cypher_position = match maybe_cp {
+                    Ok(cp) => cp,
+                    Err(_) => {
+                        continue;
+                    }
+                };
+
+                let borrows = cypher_position.total_borrows(cypher_token);
+                let base_borrows = cypher_position.base_borrows();
+                let native_borrows = cypher_position.native_borrows(cypher_token);
+                info!("[LIQ] Cypher User: {} - Token {} - CypherPosition - Base Borrows {} - Native Borrows {} - Total Borrows {}", cypher_user_pubkey, token.symbol, base_borrows, native_borrows, borrows);
+
+                let base_deposits = cypher_position.base_deposits();
+                let native_deposits = cypher_position.native_deposits(cypher_token);
+                let total_deposits = cypher_position.total_deposits(cypher_token);
+                info!("[LIQ] Cypher User: {} - Token {} - CypherPosition - Base Deposits {} - Native Deposits {} - Total Deposits {}", cypher_user_pubkey, token.symbol, base_deposits, native_deposits, total_deposits);
+
+                if token.token_index != QUOTE_TOKEN_IDX {
+                    let maybe_ca = cypher_user.get_c_asset(token.token_index);
+                    let cypher_asset = match maybe_ca {
+                        Ok(ca) => ca,
                         Err(_) => {
                             continue;
                         }
                     };
 
-                    let borrows = cypher_position.total_borrows(cypher_token);
-                    let base_borrows = cypher_position.base_borrows();
-                    let native_borrows = cypher_position.native_borrows(cypher_token);
-                    info!("Cypher User: {} - Token {} - CypherPosition - Base Borrows {} - Native Borrows {} - Total Borrows {}", cypher_user_pubkey, token.symbol, base_borrows, native_borrows, borrows);
-
-                    let base_deposits = cypher_position.base_deposits();
-                    let native_deposits = cypher_position.native_deposits(cypher_token);
-                    let total_deposits = cypher_position.total_deposits(cypher_token);
-                    info!("Cypher User: {} - Token {} - CypherPosition - Base Deposits {} - Native Deposits {} - Total Deposits {}", cypher_user_pubkey, token.symbol, base_deposits, native_deposits, total_deposits);
-
-                    if token.token_index != QUOTE_TOKEN_IDX {
-                        let maybe_ca = cypher_user.get_c_asset(token.token_index);
-                        let cypher_asset = match maybe_ca {
-                            Ok(ca) => ca,
-                            Err(_) => {
-                                continue;
-                            }
-                        };
-
-                        info!("Cypher User: {} - Token {} - CypherAsset -  Mint Collateral {} - Debt Shares {}", cypher_user_pubkey, token.symbol, cypher_asset.collateral, cypher_asset.debt_shares);
-                    };
-                }
-
-                return (true, token.token_index);
+                    info!("[LIQ] Cypher User: {} - Token {} - CypherAsset -  Mint Collateral {} - Debt Shares {}", cypher_user_pubkey, token.symbol, cypher_asset.collateral, cypher_asset.debt_shares);
+                };
             }
         }
 
-        (false, usize::default())
+        (liquidatable, token_index)
     }
 
     async fn get_all_accounts(self: &Arc<Self>) -> Result<(), ClientError> {
@@ -987,11 +875,11 @@ impl Liquidator {
         let accounts = match accounts_res {
             Ok(a) => a,
             Err(e) => {
-                warn!("Could not fetch cypher users: {}", e.to_string());
+                warn!("[LIQ] Could not fetch cypher users: {}", e.to_string());
                 return Err(e);
             }
         };
-        info!("Fetched {} cypher accounts.", accounts.len());
+        info!("[LIQ] Fetched {} cypher accounts.", accounts.len());
 
         let map = self.cypher_users.write().await;
         for (pubkey, account) in accounts {
@@ -1010,7 +898,7 @@ impl Liquidator {
                 Ok(_) => (),
                 Err(e) => {
                     warn!(
-                        "There was an error getting all cypher user accounts: {}",
+                        "[LIQ] There was an error getting all cypher user accounts: {}",
                         e.to_string()
                     );
                 }
@@ -1029,19 +917,24 @@ impl Liquidator {
         let account_res = match res {
             Ok(a) => a,
             Err(e) => {
-                warn!("Could not fetch cypher group account: {}", e.to_string());
+                warn!(
+                    "[LIQ] Could not fetch cypher group account: {}",
+                    e.to_string()
+                );
                 return Err(e);
             }
         };
 
         let account = match account_res.value {
-            Some(a) => a,
+            Some(a) => {
+                info!("[LIQ] Successfully fetched cypher group.");
+                a
+            }
             None => {
-                warn!("Could not get cypher group account info from request.");
+                warn!("[LIQ] Could not get cypher group account info from request.");
                 return Ok(());
             }
         };
-        info!("Fetched cypher group.");
 
         let cypher_group = get_zero_copy_account::<CypherGroup>(&account);
 
@@ -1056,7 +949,7 @@ impl Liquidator {
             Ok(a) => a,
             Err(e) => {
                 warn!(
-                    "Could not fetch cypher liquidator account: {}",
+                    "[LIQ] Could not fetch cypher liquidator account: {}",
                     e.to_string()
                 );
                 return Err(e);
@@ -1064,13 +957,15 @@ impl Liquidator {
         };
 
         let account = match account_res.value {
-            Some(a) => a,
+            Some(a) => {
+                info!("[LIQ] Successfully fetched cypher liquidator account.");
+                a
+            }
             None => {
-                warn!("Could not get cypher liquidator account info from request.");
+                warn!("[LIQ] Could not get cypher liquidator account info from request.");
                 return Ok(());
             }
         };
-        info!("Fetched cypher liquidator account.");
 
         let cypher_liqor = get_zero_copy_account::<CypherUser>(&account);
 
@@ -1086,66 +981,11 @@ impl Liquidator {
             match res {
                 Ok(_) => (),
                 Err(e) => {
-                    warn!("There was an error getting the cypher group and cypher liquidator user accounts: {}", e.to_string());
+                    warn!("[LIQ] There was an error getting the cypher group and cypher liquidator user accounts: {}", e.to_string());
                 }
             };
 
             tokio::time::sleep(Duration::from_millis(2000)).await;
-        }
-    }
-
-    async fn get_chain_meta(self: &Arc<Self>) -> Result<(), ClientError> {
-        let res = self
-            .client
-            .get_latest_blockhash_with_commitment(CommitmentConfig::confirmed())
-            .await;
-
-        let hash_res = match res {
-            Ok(a) => a,
-            Err(e) => {
-                warn!("Could not fetch latest blockhash: {}", e.to_string());
-                return Err(e);
-            }
-        };
-
-        let (hash, _slot) = hash_res;
-        info!("Fetched blockhash: {}", &hash.to_string());
-        *self.latest_blockhash.write().await = hash;
-
-        let slot_res = self
-            .client
-            .get_slot_with_commitment(CommitmentConfig::confirmed())
-            .await;
-
-        let slot = match slot_res {
-            Ok(a) => a,
-            Err(e) => {
-                warn!("Could not fetch latest slot: {}", e.to_string());
-                return Err(e);
-            }
-        };
-        info!("Fetched recent slot: {}", slot);
-
-        *self.latest_slot.write().await = slot;
-
-        Ok(())
-    }
-
-    async fn get_chain_meta_replay(self: &Arc<Self>) {
-        loop {
-            let res = self.get_chain_meta().await;
-
-            match res {
-                Ok(_) => (),
-                Err(e) => {
-                    warn!(
-                        "There was an error getting the chain meta data: {}",
-                        e.to_string()
-                    );
-                }
-            };
-
-            tokio::time::sleep(Duration::from_millis(1000)).await;
         }
     }
 }
