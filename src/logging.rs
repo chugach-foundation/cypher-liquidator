@@ -3,7 +3,7 @@ use log::{Level, LevelFilter, Metadata, Record, SetLoggerError};
 
 static LOGGER: Logger = Logger;
 
-const DATE_FORMAT_STR: &str = "%Y-%m-%d %H:%M:%S";
+const DATE_FORMAT_STR: &str = "%Y-%m-%dT%H:%M:%S%.6f";
 
 struct Logger;
 

@@ -584,15 +584,10 @@ impl Liquidator {
                     }
                 };
 
-                let borrows = cypher_position.total_borrows(cypher_token);
-                let base_borrows = cypher_position.base_borrows();
-                let native_borrows = cypher_position.native_borrows(cypher_token);
-                info!("[LIQ] LIQOR: {} - Token {} - CypherPosition - Base Borrows {} - Native Borrows {} - Total Borrows {}", self.cypher_liqor_pubkey, token.symbol, base_borrows, native_borrows, borrows);
-
-                let base_deposits = cypher_position.base_deposits();
-                let native_deposits = cypher_position.native_deposits(cypher_token);
+                
+                let total_borrows = cypher_position.total_borrows(cypher_token);
                 let total_deposits = cypher_position.total_deposits(cypher_token);
-                info!("[LIQ] LIQOR: {} - Token {} - CypherPosition - Base Deposits {} - Native Deposits {} - Total Deposits {}", self.cypher_liqor_pubkey, token.symbol, base_deposits, native_deposits, total_deposits);
+                info!("[LIQ] LIQOR: {} - {} - Position - Total Borrows: {} - Total Deposits: {}", self.cypher_liqor_pubkey, token.symbol, total_borrows, total_deposits);
 
                 if token.token_index != QUOTE_TOKEN_IDX {
                     let maybe_ca = cypher_liqor.get_c_asset(token.token_index);
@@ -603,7 +598,7 @@ impl Liquidator {
                         }
                     };
 
-                    info!("[LIQ] LIQOR: {} - Token {} - CypherAsset -  Mint Collateral {} - Debt Shares {}", self.cypher_liqor_pubkey, token.symbol, cypher_asset.collateral, cypher_asset.debt_shares);
+                    info!("[LIQ] LIQOR: {} - {} - cAsset -  Mint Collateral {} - Debt Shares {}", self.cypher_liqor_pubkey, token.symbol, cypher_asset.collateral, cypher_asset.debt_shares);
                 };
             }
         }
@@ -717,15 +712,10 @@ impl Liquidator {
                         }
                     };
 
-                    let borrows = cypher_position.total_borrows(cypher_token);
-                    let base_borrows = cypher_position.base_borrows();
-                    let native_borrows = cypher_position.native_borrows(cypher_token);
-                    info!("[LIQ] Liqee: {} - Token {} - CypherPosition - Base Borrows {} - Native Borrows {} - Total Borrows {}", cypher_user_pubkey, token.symbol, base_borrows, native_borrows, borrows);
-
-                    let base_deposits = cypher_position.base_deposits();
-                    let native_deposits = cypher_position.native_deposits(cypher_token);
+                    
+                    let total_borrows = cypher_position.total_borrows(cypher_token);
                     let total_deposits = cypher_position.total_deposits(cypher_token);
-                    info!("[LIQ] Liqee: {} - Token {} - CypherPosition - Base Deposits {} - Native Deposits {} - Total Deposits {}", cypher_user_pubkey, token.symbol, base_deposits, native_deposits, total_deposits);
+                    info!("[LIQ] Liqee: {} - {} - Position - Total Borrows: {} - Total Deposits: {}", cypher_user_pubkey, token.symbol, total_borrows, total_deposits);
 
                     if token.token_index != QUOTE_TOKEN_IDX {
                         let maybe_ca = cypher_user.get_c_asset(token.token_index);
@@ -736,7 +726,7 @@ impl Liquidator {
                             }
                         };
 
-                        info!("[LIQ] Liqee: {} - Token {} - CypherAsset -  Mint Collateral {} - Debt Shares {}", cypher_user_pubkey, token.symbol, cypher_asset.collateral, cypher_asset.debt_shares);
+                        info!("[LIQ] Liqee: {} - {} - cAsset -  Mint Collateral {} - Debt Shares {}", cypher_user_pubkey, token.symbol, cypher_asset.collateral, cypher_asset.debt_shares);
                     };
                 }
             }
@@ -880,15 +870,9 @@ impl Liquidator {
                     }
                 };
 
-                let borrows = cypher_position.total_borrows(cypher_token);
-                let base_borrows = cypher_position.base_borrows();
-                let native_borrows = cypher_position.native_borrows(cypher_token);
-                info!("[LIQ] Liqee: {} - Token {} - CypherPosition - Base Borrows {} - Native Borrows {} - Total Borrows {}", cypher_user_pubkey, token.symbol, base_borrows, native_borrows, borrows);
-
-                let base_deposits = cypher_position.base_deposits();
-                let native_deposits = cypher_position.native_deposits(cypher_token);
+                let total_borrows = cypher_position.total_borrows(cypher_token);
                 let total_deposits = cypher_position.total_deposits(cypher_token);
-                info!("[LIQ] Liqee: {} - Token {} - CypherPosition - Base Deposits {} - Native Deposits {} - Total Deposits {}", cypher_user_pubkey, token.symbol, base_deposits, native_deposits, total_deposits);
+                info!("[LIQ] Liqee: {} - {} - Position - Total Borrows: {} - Total Deposits: {}", cypher_user_pubkey, token.symbol, total_borrows, total_deposits);
 
                 if token.token_index != QUOTE_TOKEN_IDX {
                     let maybe_ca = cypher_user.get_c_asset(token.token_index);
@@ -899,7 +883,7 @@ impl Liquidator {
                         }
                     };
 
-                    info!("[LIQ] Liqee: {} - Token {} - CypherAsset -  Mint Collateral {} - Debt Shares {}", cypher_user_pubkey, token.symbol, cypher_asset.collateral, cypher_asset.debt_shares);
+                    info!("[LIQ] Liqee: {} - {} - cAsset -  Mint Collateral {} - Debt Shares {}", cypher_user_pubkey, token.symbol, cypher_asset.collateral, cypher_asset.debt_shares);
                 };
             }
         }
