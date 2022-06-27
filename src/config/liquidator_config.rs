@@ -8,7 +8,8 @@ pub struct LiquidatorConfig {
     pub wallet: String,
     pub cluster: String,
     pub log_simulations: bool,
-    pub log_account_healths: bool,
+    pub log_liqee_healths: bool,
+    pub log_liqor_health: bool,
 }
 
 pub fn load_liquidator_config(path: &str) -> Result<LiquidatorConfig, Box<dyn Error>> {

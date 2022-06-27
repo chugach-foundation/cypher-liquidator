@@ -11,6 +11,7 @@ use serum_dex::{
     matching::Side,
     state::{MarketStateV2, OpenOrders},
 };
+use solana_account_decoder::parse_token::UiTokenAmount;
 use solana_client::{client_error::ClientError, nonblocking::rpc_client::RpcClient};
 use solana_sdk::{
     account::Account,
@@ -86,6 +87,27 @@ pub async fn get_serum_open_orders(
     let dex_open_orders: OpenOrders = parse_dex_account(ai.data);
 
     Ok(dex_open_orders)
+}
+
+pub async fn get_token_account(
+    client: Arc<RpcClient>,
+    token_account: &Pubkey,
+) -> Result<UiTokenAmount, ClientError> {
+    let ta_res = client.get_token_account_balance_with_commitment(
+        token_account, CommitmentConfig::confirmed()).await;
+
+    let ta = match ta_res {
+        Ok(ta) => ta.value,
+        Err(e) => {
+            warn!(
+                "There was an error while fetching the token account: {}",
+                e.to_string()
+            );
+            return Err(e);
+        }
+    };
+
+    Ok(ta)
 }
 
 pub struct OpenOrder {
