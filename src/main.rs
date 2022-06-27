@@ -1,6 +1,6 @@
-mod accounts_cache;
 mod chain_meta_service;
 mod config;
+mod cypher_account_service;
 mod fast_tx_builder;
 mod liquidator;
 mod logging;
@@ -9,9 +9,9 @@ mod utils;
 
 use chain_meta_service::ChainMetaService;
 use config::*;
+use cypher_account_service::{CypherAccountService, CypherUserWrapper};
 use liquidator::*;
 use logging::*;
-use tokio::sync::broadcast::channel;
 use utils::*;
 
 use clap::Parser;
@@ -21,6 +21,7 @@ use solana_sdk::{
     commitment_config::CommitmentConfig, pubkey::Pubkey, signature::Keypair, signer::Signer,
 };
 use std::{str::FromStr, sync::Arc};
+use tokio::sync::broadcast::{channel, Sender};
 
 pub const CYPHER_CONFIG_PATH: &str = "./cfg/group.json";
 
@@ -81,12 +82,28 @@ async fn main() -> Result<(), LiquidatorError> {
         cms_clone.start_service().await;
     });
 
+    let (cas_sender, mut _cas_recv) = channel::<CypherUserWrapper>(u16::MAX as usize);
+
+    let cas = Arc::new(CypherAccountService::new(
+        Arc::clone(&rpc_client),
+        shutdown_send.clone(),
+        cas_sender.clone(),
+        cypher_group_key,
+    ));
+
+    let cas_clone = Arc::clone(&cas);
+    let cas_t = tokio::spawn(async move {
+        cas_clone.start_service().await;
+    });
+
     tokio::select! {
         _ = run_liquidator(
             rpc_client,
             liquidator_config,
             cypher_config,
             cms,
+            cas_sender.clone(),
+            shutdown_send.clone(),
             cypher_group_key,
             cypher_liqor_pubkey,
             keypair,
@@ -104,7 +121,7 @@ async fn main() -> Result<(), LiquidatorError> {
         },
     };
 
-    let (cms_res,) = tokio::join!(cms_t);
+    let (cms_res, cas_res) = tokio::join!(cms_t, cas_t);
 
     match cms_res {
         Ok(_) => (),
@@ -117,14 +134,28 @@ async fn main() -> Result<(), LiquidatorError> {
         }
     }
 
+    match cas_res {
+        Ok(_) => (),
+        Err(e) => {
+            warn!(
+                "There was an error while shutting down the cypher account service: {}",
+                e.to_string()
+            );
+            return Err(LiquidatorError::ShutdownError);
+        }
+    }
+
     Ok(())
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn run_liquidator(
     rpc_client: Arc<RpcClient>,
     liquidator_config: Arc<LiquidatorConfig>,
     cypher_config: Arc<CypherConfig>,
     chain_meta_service: Arc<ChainMetaService>,
+    user_sender: Sender<CypherUserWrapper>,
+    shutdown_sender: Sender<bool>,
     cypher_group_key: Pubkey,
     cypher_liqor_pubkey: Pubkey,
     keypair: Arc<Keypair>,
@@ -135,6 +166,8 @@ async fn run_liquidator(
             Arc::clone(&liquidator_config),
             Arc::clone(&cypher_config),
             Arc::clone(&chain_meta_service),
+            user_sender.subscribe(),
+            shutdown_sender.clone(),
             cypher_group_key,
             cypher_liqor_pubkey,
             Arc::clone(&keypair),

@@ -93,8 +93,9 @@ pub async fn get_token_account(
     client: Arc<RpcClient>,
     token_account: &Pubkey,
 ) -> Result<UiTokenAmount, ClientError> {
-    let ta_res = client.get_token_account_balance_with_commitment(
-        token_account, CommitmentConfig::confirmed()).await;
+    let ta_res = client
+        .get_token_account_balance_with_commitment(token_account, CommitmentConfig::confirmed())
+        .await;
 
     let ta = match ta_res {
         Ok(ta) => ta.value,

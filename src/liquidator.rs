@@ -3,16 +3,11 @@ use cypher::{
     quote_mint,
     states::{CypherGroup, CypherMarket, CypherUser},
 };
-use dashmap::DashMap;
 use jet_proto_math::Number;
 use log::{info, warn};
 use serum_dex::instruction::CancelOrderInstructionV2;
-use solana_account_decoder::UiAccountEncoding;
 use solana_client::{
-    client_error::ClientError,
-    nonblocking::rpc_client::RpcClient,
-    rpc_config::{RpcAccountInfoConfig, RpcProgramAccountsConfig, RpcTransactionConfig},
-    rpc_filter::{Memcmp, MemcmpEncodedBytes, MemcmpEncoding, RpcFilterType},
+    client_error::ClientError, nonblocking::rpc_client::RpcClient, rpc_config::RpcTransactionConfig,
 };
 use solana_sdk::{
     commitment_config::CommitmentConfig,
@@ -25,17 +20,22 @@ use solana_sdk::{
 };
 use solana_transaction_status::UiTransactionEncoding;
 use std::{sync::Arc, time::Duration};
-use tokio::sync::RwLock;
+use tokio::sync::{
+    broadcast::{Receiver, Sender},
+    Mutex, RwLock,
+};
 
 use crate::{
     chain_meta_service::ChainMetaService,
     config::{cypher_config::CypherConfig, liquidator_config::LiquidatorConfig},
+    cypher_account_service::CypherUserWrapper,
     fast_tx_builder::FastTxnBuilder,
     simulation::{simulate_liquidate_collateral, simulate_liquidate_market_collateral},
     utils::{
         derive_open_orders_address, get_cancel_order_ix, get_liquidate_collateral_ixs,
         get_liquidate_market_collateral_ixs, get_open_orders, get_serum_market,
-        get_serum_open_orders, get_settle_funds_ix, get_zero_copy_account, OpenOrder, get_token_account,
+        get_serum_open_orders, get_settle_funds_ix, get_token_account, get_zero_copy_account,
+        OpenOrder,
     },
 };
 
@@ -54,20 +54,24 @@ pub struct Liquidator {
     liquidator_config: Arc<LiquidatorConfig>,
     cypher_config: Arc<CypherConfig>,
     chain_meta_service: Arc<ChainMetaService>,
+    receiver: Mutex<Receiver<CypherUserWrapper>>,
+    shutdown: Sender<bool>,
     cypher_group_pubkey: Pubkey,
     cypher_group: RwLock<Option<CypherGroup>>,
-    cypher_users: RwLock<DashMap<Pubkey, CypherUser>>,
     cypher_liqor: RwLock<Option<CypherUser>>,
     cypher_liqor_pubkey: Pubkey,
     keypair: Arc<Keypair>,
 }
 
 impl Liquidator {
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         client: Arc<RpcClient>,
         liquidator_config: Arc<LiquidatorConfig>,
         cypher_config: Arc<CypherConfig>,
         chain_meta_service: Arc<ChainMetaService>,
+        receiver: Receiver<CypherUserWrapper>,
+        shutdown: Sender<bool>,
         cypher_group_pubkey: Pubkey,
         cypher_liqor_pubkey: Pubkey,
         keypair: Arc<Keypair>,
@@ -77,12 +81,13 @@ impl Liquidator {
             liquidator_config,
             cypher_config,
             chain_meta_service,
+            receiver: Mutex::new(receiver),
+            shutdown,
             cypher_group_pubkey,
             keypair,
             cypher_liqor_pubkey,
             cypher_liqor: RwLock::new(None),
             cypher_group: RwLock::new(None),
-            cypher_users: RwLock::new(DashMap::new()),
         }
     }
 
@@ -94,14 +99,16 @@ impl Liquidator {
             group_self.get_cypher_group_and_liqor_replay().await;
         });
 
-        let users_self = Arc::clone(&aself);
-        let get_users_t = tokio::spawn(async move {
-            users_self.get_all_accounts_replay().await;
-        });
+        let mut shutdown = self.shutdown.subscribe();
 
-        self.run().await;
+        tokio::select! {
+            _ = self.run() => {},
+            _ = shutdown.recv() => {
+                info!("[LIQ] Received shutdown signal, stopping liquidator.");
+            }
+        }
 
-        let (group_res, users_res) = tokio::join!(get_group_t, get_users_t);
+        let (group_res,) = tokio::join!(get_group_t);
 
         match group_res {
             Ok(_) => (),
@@ -113,231 +120,276 @@ impl Liquidator {
             }
         };
 
-        match users_res {
-            Ok(_) => (),
-            Err(e) => {
-                warn!(
-                    "[LIQ] There was an error joining with the task that fetches the Liqees: {}",
-                    e.to_string()
-                );
-            }
-        };
-
         Ok(())
     }
 
     async fn run(self: &Arc<Self>) {
+        let mut receiver = self.receiver.lock().await;
         loop {
-            let maybe_group = self.cypher_group.read().await;
-            if maybe_group.is_none() {
-                tokio::time::sleep(Duration::from_millis(1000)).await;
-                continue;
-            }
-            let cypher_group = maybe_group.unwrap();
-
-            let map = self.cypher_users.read().await;
-
-            for entry in map.iter() {
-                let cypher_user_pubkey = entry.key();
-                let cypher_user = *entry.value();
-
-                // attempt to liquidate collateral
-
-                let check = self
-                    .check_collateral(&cypher_group, &cypher_user, cypher_user_pubkey)
-                    .await;
-                if check.can_liquidate {
-                    info!(
-                        "[LIQ] Liqee: {} - Collateral is liquidatable.",
-                        cypher_user_pubkey
-                    );
-
-                    if check.open_orders {
-                        let cypher_market = cypher_group.get_cypher_market(check.market_index);
-                        let res = self
-                            .cancel_user_orders(
-                                &cypher_group,
-                                cypher_market,
-                                &cypher_user,
-                                cypher_user_pubkey,
-                                &check,
-                            )
-                            .await;
-                        match res {
-                            Ok(_) => (),
-                            Err(e) => {
-                                warn!("[LIQ] Failed to submit transaction: {}", e.to_string());
-                            }
-                        }
-                        continue;
-                    }
-
-                    if check.unsettled_funds {
-                        // TODO: optimize to settle multiple accounts at once
-                        // settle user funds before attempting to liquidate
-                        let cypher_market = cypher_group.get_cypher_market(check.market_index);
-                        let res = self
-                            .settle_user_funds(
-                                &cypher_group,
-                                cypher_market,
-                                &cypher_user,
-                                cypher_user_pubkey,
-                                &check,
-                            )
-                            .await;
-                        match res {
-                            Ok(_) => (),
-                            Err(e) => {
-                                warn!("[LIQ] Failed to submit transaction: {}", e.to_string());
-                            }
-                        }
-                        continue;
-                    }
-
-                    if self.check_can_liquidate(&cypher_group).await {
-                        let maybe_liqor = self.cypher_liqor.read().await;
-                        if maybe_liqor.is_none() {
-                            tokio::time::sleep(Duration::from_millis(1000)).await;
-                            continue;
-                        }
-                        let cypher_liqor = maybe_liqor.unwrap();
-
-                        let (liqor_can_liq, asset_mint, liab_mint) = self.get_asset_and_liab_mint(
-                            &cypher_group,
-                            &cypher_liqor,
-                            &cypher_user,
+            if let Ok(user) = receiver.recv().await {
+                match self
+                    .process(&user.cypher_user, &user.cypher_user_pubkey)
+                    .await
+                {
+                    Ok(_) => (),
+                    Err(e) => {
+                        warn!(
+                            "[LIQ] There was an error processing cypher user: {} - {:?}",
+                            user.cypher_user_pubkey, e
                         );
-
-                        if liqor_can_liq {
-                            let (
-                                repay_amount,
-                                liqee_asset_debit,
-                                market_insurance_debit,
-                                global_insurance_credit,
-                                global_insurance_debit,
-                            ) = simulate_liquidate_collateral(
-                                &cypher_group,
-                                &cypher_liqor,
-                                &cypher_user,
-                                asset_mint,
-                                liab_mint,
-                            );
-
-                            if repay_amount == 0
-                                && liqee_asset_debit == 0
-                                && market_insurance_debit == 0
-                                && global_insurance_credit == 0
-                                && global_insurance_debit == 0
-                            {
-                                continue;
-                            }
-
-                            info!("[LIQ] Liqee: {} - Asset Mint: {} - Liab Mint: {} - Attempting to liquidate.", cypher_user_pubkey, asset_mint, liab_mint);
-
-                            let liq_ixs = get_liquidate_collateral_ixs(
-                                &cypher_group,
-                                &asset_mint,
-                                &liab_mint,
-                                &self.cypher_liqor_pubkey,
-                                cypher_user_pubkey,
-                                &self.keypair,
-                            );
-
-                            let blockhash = self.chain_meta_service.get_latest_blockhash().await;
-
-                            let res = self.submit_transactions(liq_ixs, blockhash).await;
-                            match res {
-                                Ok(_) => (),
-                                Err(e) => {
-                                    warn!("[LIQ] Failed to submit transaction: {}", e.to_string());
-                                }
-                            }
-                        }
-                    }
-                }
-
-                // attempt to liquidate market collateral
-                let (can_liq, market_idx) = self
-                    .check_market_collateral(&cypher_group, &cypher_user, cypher_user_pubkey)
-                    .await;
-                if can_liq {
-                    info!(
-                        "[LIQ] Liqee: {} - Market collateral is liquidatable.",
-                        cypher_user_pubkey
-                    );
-
-                    let cypher_token = cypher_group.get_cypher_token(market_idx);
-                    let cypher_market = cypher_group.get_cypher_market(market_idx);
-
-                    if self.check_can_liquidate(&cypher_group).await {
-                        let maybe_liqor = self.cypher_liqor.read().await;
-                        if maybe_liqor.is_none() {
-                            tokio::time::sleep(Duration::from_millis(1000)).await;
-                            continue;
-                        }
-                        let cypher_liqor = maybe_liqor.unwrap();
-
-                        let cypher_group_config = self
-                            .cypher_config
-                            .get_group(self.liquidator_config.cluster.as_str())
-                            .unwrap();
-                        let cypher_mkt =
-                            cypher_group_config.get_market_by_index(market_idx).unwrap();
-                        let cypher_tok = cypher_group_config.get_token_by_index(market_idx).unwrap();
-
-                        let slot = self.chain_meta_service.get_latest_slot().await;
-                        let vault = get_token_account(Arc::clone(&self.client), &cypher_token.vault).await.unwrap();
-                        
-                        let (
-                            repay_amount,
-                            liqor_pc_credit,
-                            liqee_collateral_debit,
-                            market_insurance_debit,
-                            global_insurance_credit,
-                        ) = simulate_liquidate_market_collateral(
-                            &cypher_group,
-                            &cypher_liqor,
-                            &cypher_user,
-                            vault,
-                            slot,
-                            market_idx
-                        );
-
-                        if repay_amount == 0
-                            && liqor_pc_credit == 0
-                            && liqee_collateral_debit == 0
-                            && market_insurance_debit == 0
-                            && global_insurance_credit == 0
-                        {
-                            continue;
-                        }
-                        
-                        info!("[LIQ] Liqee: {} - Cypher Market: {} - Cypher Token: {} - C Asset Mint: {} - Dex Market: {} - Attempting to liquidate.", cypher_user_pubkey, cypher_mkt.name, cypher_tok.symbol, cypher_token.mint, cypher_market.dex_market);
-
-                        let liq_ixs = get_liquidate_market_collateral_ixs(
-                            &cypher_group,
-                            cypher_market,
-                            cypher_token,
-                            &self.cypher_liqor_pubkey,
-                            cypher_user_pubkey,
-                            &self.keypair,
-                        );
-
-                        let blockhash = self.chain_meta_service.get_latest_blockhash().await;
-
-                        let res = self.submit_transactions(liq_ixs, blockhash).await;
-                        match res {
-                            Ok(_) => (),
-                            Err(e) => {
-                                warn!("[LIQ] Failed to submit transaction: {}", e.to_string());
-                            }
-                        }
                     }
                 }
             }
-
-            tokio::time::sleep(Duration::from_millis(5000)).await;
         }
+    }
+
+    async fn process(
+        self: &Arc<Self>,
+        cypher_user: &CypherUser,
+        cypher_user_pubkey: &Pubkey,
+    ) -> Result<(), LiquidatorError> {
+        let maybe_group = self.cypher_group.read().await;
+        if maybe_group.is_none() {
+            tokio::time::sleep(Duration::from_millis(1000)).await;
+            return Err(LiquidatorError::CypherGroupNotFound);
+        }
+        let cypher_group = maybe_group.unwrap();
+
+        match self
+            .process_collateral(&cypher_group, cypher_user, cypher_user_pubkey)
+            .await
+        {
+            Ok(_) => (),
+            Err(e) => {
+                warn!(
+                    "[LIQ] An error occurred when processing cypher user {} collateral: {:?}",
+                    cypher_user_pubkey, e
+                );
+            }
+        }
+
+        match self
+            .process_market_collateral(&cypher_group, cypher_user, cypher_user_pubkey)
+            .await
+        {
+            Ok(_) => (),
+            Err(e) => {
+                warn!("[LIQ] An error occurred when processing cypher user {} market collateral: {:?}", cypher_user_pubkey, e);
+            }
+        }
+
+        Ok(())
+    }
+
+    async fn process_collateral(
+        self: &Arc<Self>,
+        cypher_group: &CypherGroup,
+        cypher_user: &CypherUser,
+        cypher_user_pubkey: &Pubkey,
+    ) -> Result<(), LiquidatorError> {
+        // attempt to liquidate collateral
+        let check = self
+            .check_collateral(cypher_group, cypher_user, cypher_user_pubkey)
+            .await;
+        if check.can_liquidate {
+            info!(
+                "[LIQ] Liqee: {} - Collateral is liquidatable.",
+                cypher_user_pubkey
+            );
+
+            if check.open_orders {
+                let cypher_market = cypher_group.get_cypher_market(check.market_index);
+                let res = self
+                    .cancel_user_orders(
+                        cypher_group,
+                        cypher_market,
+                        cypher_user,
+                        cypher_user_pubkey,
+                        &check,
+                    )
+                    .await;
+                match res {
+                    Ok(_) => (),
+                    Err(e) => {
+                        warn!("[LIQ] Failed to submit transaction: {}", e.to_string());
+                        return Err(LiquidatorError::ErrorSubmittingTransaction(e));
+                    }
+                }
+                return Ok(());
+            }
+
+            if check.unsettled_funds {
+                // TODO: optimize to settle multiple accounts at once
+                // settle user funds before attempting to liquidate
+                let cypher_market = cypher_group.get_cypher_market(check.market_index);
+                let res = self
+                    .settle_user_funds(
+                        cypher_group,
+                        cypher_market,
+                        cypher_user,
+                        cypher_user_pubkey,
+                        &check,
+                    )
+                    .await;
+                match res {
+                    Ok(_) => (),
+                    Err(e) => {
+                        warn!("[LIQ] Failed to submit transaction: {}", e.to_string());
+                        return Err(LiquidatorError::ErrorSubmittingTransaction(e));
+                    }
+                }
+                return Ok(());
+            }
+
+            if self.check_can_liquidate(cypher_group).await {
+                let maybe_liqor = self.cypher_liqor.read().await;
+                if maybe_liqor.is_none() {
+                    tokio::time::sleep(Duration::from_millis(1000)).await;
+                    return Err(LiquidatorError::CypherLiqorNotFound);
+                }
+                let cypher_liqor = maybe_liqor.unwrap();
+
+                let (liqor_can_liq, asset_mint, liab_mint) =
+                    self.get_asset_and_liab_mint(cypher_group, &cypher_liqor, cypher_user);
+
+                if liqor_can_liq {
+                    let (
+                        repay_amount,
+                        liqee_asset_debit,
+                        market_insurance_debit,
+                        global_insurance_credit,
+                        global_insurance_debit,
+                    ) = simulate_liquidate_collateral(
+                        cypher_group,
+                        &cypher_liqor,
+                        cypher_user,
+                        asset_mint,
+                        liab_mint,
+                    );
+
+                    if repay_amount == 0
+                        && liqee_asset_debit == 0
+                        && market_insurance_debit == 0
+                        && global_insurance_credit == 0
+                        && global_insurance_debit == 0
+                    {
+                        return Err(LiquidatorError::ZeroedSimulation);
+                    }
+
+                    info!("[LIQ] Liqee: {} - Asset Mint: {} - Liab Mint: {} - Attempting to liquidate.", cypher_user_pubkey, asset_mint, liab_mint);
+
+                    let liq_ixs = get_liquidate_collateral_ixs(
+                        cypher_group,
+                        &asset_mint,
+                        &liab_mint,
+                        &self.cypher_liqor_pubkey,
+                        cypher_user_pubkey,
+                        &self.keypair,
+                    );
+
+                    let blockhash = self.chain_meta_service.get_latest_blockhash().await;
+
+                    let res = self.submit_transactions(liq_ixs, blockhash).await;
+                    match res {
+                        Ok(_) => (),
+                        Err(e) => {
+                            warn!("[LIQ] Failed to submit transaction: {}", e.to_string());
+                        }
+                    }
+                }
+            }
+        }
+
+        Ok(())
+    }
+
+    async fn process_market_collateral(
+        self: &Arc<Self>,
+        cypher_group: &CypherGroup,
+        cypher_user: &CypherUser,
+        cypher_user_pubkey: &Pubkey,
+    ) -> Result<(), LiquidatorError> {
+        // attempt to liquidate market collateral
+        let (can_liq, market_idx) = self
+            .check_market_collateral(cypher_group, cypher_user, cypher_user_pubkey)
+            .await;
+        if can_liq {
+            info!(
+                "[LIQ] Liqee: {} - Market collateral is liquidatable.",
+                cypher_user_pubkey
+            );
+
+            let cypher_token = cypher_group.get_cypher_token(market_idx);
+            let cypher_market = cypher_group.get_cypher_market(market_idx);
+
+            if self.check_can_liquidate(cypher_group).await {
+                let maybe_liqor = self.cypher_liqor.read().await;
+                if maybe_liqor.is_none() {
+                    tokio::time::sleep(Duration::from_millis(1000)).await;
+                    return Err(LiquidatorError::CypherLiqorNotFound);
+                }
+                let cypher_liqor = maybe_liqor.unwrap();
+
+                let cypher_group_config = self
+                    .cypher_config
+                    .get_group(self.liquidator_config.cluster.as_str())
+                    .unwrap();
+                let cypher_mkt = cypher_group_config.get_market_by_index(market_idx).unwrap();
+                let cypher_tok = cypher_group_config.get_token_by_index(market_idx).unwrap();
+
+                let slot = self.chain_meta_service.get_latest_slot().await;
+                let vault = get_token_account(Arc::clone(&self.client), &cypher_token.vault)
+                    .await
+                    .unwrap();
+
+                let (
+                    repay_amount,
+                    liqor_pc_credit,
+                    liqee_collateral_debit,
+                    market_insurance_debit,
+                    global_insurance_credit,
+                ) = simulate_liquidate_market_collateral(
+                    cypher_group,
+                    &cypher_liqor,
+                    cypher_user,
+                    vault,
+                    slot,
+                    market_idx,
+                );
+
+                if repay_amount == 0
+                    && liqor_pc_credit == 0
+                    && liqee_collateral_debit == 0
+                    && market_insurance_debit == 0
+                    && global_insurance_credit == 0
+                {
+                    return Err(LiquidatorError::ZeroedSimulation);
+                }
+
+                info!("[LIQ] Liqee: {} - Cypher Market: {} - Cypher Token: {} - C Asset Mint: {} - Dex Market: {} - Attempting to liquidate.", cypher_user_pubkey, cypher_mkt.name, cypher_tok.symbol, cypher_token.mint, cypher_market.dex_market);
+
+                let liq_ixs = get_liquidate_market_collateral_ixs(
+                    cypher_group,
+                    cypher_market,
+                    cypher_token,
+                    &self.cypher_liqor_pubkey,
+                    cypher_user_pubkey,
+                    &self.keypair,
+                );
+
+                let blockhash = self.chain_meta_service.get_latest_blockhash().await;
+
+                let res = self.submit_transactions(liq_ixs, blockhash).await;
+                match res {
+                    Ok(_) => (),
+                    Err(e) => {
+                        warn!("[LIQ] Failed to submit transaction: {}", e.to_string());
+                    }
+                }
+            }
+        }
+
+        Ok(())
     }
 
     fn get_asset_and_liab_mint(
@@ -855,68 +907,6 @@ impl Liquidator {
         (liquidatable, token_index)
     }
 
-    async fn get_all_accounts(self: &Arc<Self>) -> Result<(), ClientError> {
-        let filters = Some(vec![
-            RpcFilterType::Memcmp(Memcmp {
-                offset: 8,
-                bytes: MemcmpEncodedBytes::Base58(self.cypher_group_pubkey.to_string()),
-                encoding: Some(MemcmpEncoding::Binary),
-            }),
-            RpcFilterType::DataSize(3960),
-        ]);
-
-        let accounts_res = self
-            .client
-            .get_program_accounts_with_config(
-                &cypher::ID,
-                RpcProgramAccountsConfig {
-                    filters,
-                    account_config: RpcAccountInfoConfig {
-                        encoding: Some(UiAccountEncoding::Base64),
-                        commitment: Some(CommitmentConfig::default()),
-                        ..RpcAccountInfoConfig::default()
-                    },
-                    ..RpcProgramAccountsConfig::default()
-                },
-            )
-            .await;
-
-        let accounts = match accounts_res {
-            Ok(a) => a,
-            Err(e) => {
-                warn!("[LIQ] Could not fetch cypher accounts: {}", e.to_string());
-                return Err(e);
-            }
-        };
-        info!("[LIQ] Fetched {} cypher accounts.", accounts.len());
-
-        let map = self.cypher_users.write().await;
-        for (pubkey, account) in accounts {
-            let cypher_user = get_zero_copy_account::<CypherUser>(&account);
-            map.insert(pubkey, *cypher_user);
-        }
-
-        Ok(())
-    }
-
-    async fn get_all_accounts_replay(self: &Arc<Self>) {
-        loop {
-            let res = self.get_all_accounts().await;
-
-            match res {
-                Ok(_) => (),
-                Err(e) => {
-                    warn!(
-                        "[LIQ] There was an error getting all cypher accounts: {}",
-                        e.to_string()
-                    );
-                }
-            };
-
-            tokio::time::sleep(Duration::from_millis(15000)).await;
-        }
-    }
-
     async fn get_cypher_group_and_liqor(self: &Arc<Self>) -> Result<(), ClientError> {
         let res = self
             .client
@@ -983,7 +973,7 @@ impl Liquidator {
         Ok(())
     }
 
-    async fn get_cypher_group_and_liqor_replay(self: &Arc<Self>) {
+    async fn get_cypher_group_and_liqor_replay_inner(self: &Arc<Self>) {
         loop {
             let res = self.get_cypher_group_and_liqor().await;
 
@@ -997,9 +987,24 @@ impl Liquidator {
             tokio::time::sleep(Duration::from_millis(2000)).await;
         }
     }
+
+    async fn get_cypher_group_and_liqor_replay(self: &Arc<Self>) {
+        let mut shutdown = self.shutdown.subscribe();
+
+        tokio::select! {
+            _ = self.get_cypher_group_and_liqor_replay_inner() => {},
+            _ = shutdown.recv() => {
+                info!("[LIQ] Received shutdown signal, stopping cypher group and liquidator account requests.");
+            }
+        }
+    }
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug)]
 pub enum LiquidatorError {
     ShutdownError,
+    CypherGroupNotFound,
+    CypherLiqorNotFound,
+    ZeroedSimulation,
+    ErrorSubmittingTransaction(ClientError),
 }

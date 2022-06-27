@@ -125,14 +125,7 @@ pub fn simulate_liquidate_market_collateral(
     cur_slot: u64,
     market_idx: usize,
 ) -> (u64, u64, u64, u64, u64) {
-    calc_market_collateral_liquidation(
-        group,
-        liqor_user,
-        liqee_user,
-        vault,
-        cur_slot,
-        market_idx,
-    )
+    calc_market_collateral_liquidation(group, liqor_user, liqee_user, vault, cur_slot, market_idx)
 }
 
 fn calc_market_collateral_liquidation(

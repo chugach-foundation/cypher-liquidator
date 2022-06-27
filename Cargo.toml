@@ -18,7 +18,7 @@ jet-proto-proc-macros = { git = "https://github.com/chugach-foundation/jet-progr
 spl-token = { version = "3.1.1", features = ["no-entrypoint"] }
 anchor-lang = { git = "https://github.com/chugach-foundation/anchor.git", rev="e14de2e" }
 anchor-client = { git = "https://github.com/chugach-foundation/anchor.git", rev="e14de2e" }
-tokio = "1.14.1"
+tokio = { version = "1.14.1", features = ["rt", "macros"] }
 dashmap = "5.3.4"
 base64 = "0.13.0"
 bytemuck = { version = "1.4.0" }
