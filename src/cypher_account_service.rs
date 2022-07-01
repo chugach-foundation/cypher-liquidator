@@ -5,6 +5,7 @@ use solana_account_decoder::{UiAccountEncoding, UiDataSliceConfig};
 use solana_client::rpc_config::{RpcAccountInfoConfig, RpcProgramAccountsConfig};
 use solana_client::rpc_filter::{Memcmp, MemcmpEncodedBytes, MemcmpEncoding, RpcFilterType};
 use solana_client::{client_error::ClientError, nonblocking::rpc_client::RpcClient};
+use solana_sdk::account::Account;
 use solana_sdk::commitment_config::CommitmentConfig;
 use solana_sdk::pubkey::Pubkey;
 use std::sync::Arc;
@@ -54,15 +55,57 @@ impl CypherAccountService {
     }
 
     async fn get_all_accounts(self: &Arc<Self>) -> Result<(), ClientError> {
-        let mut pubkeys: Vec<Pubkey> = Vec::new();
+        let map_entries: Vec<Pubkey> = self.map.iter().map(|e| *e.key()).collect();
 
-        for entry in self.map.iter() {
-            pubkeys.push(*entry.key());
+        for i in (0..self.map.len()).step_by(100) {
+            let mut pubkeys: Vec<Pubkey> = Vec::new();
+            pubkeys.extend(map_entries[i..map_entries.len().min(i + 100)].iter());
+
+            let accounts_res = self.get_multiple_accounts(&pubkeys).await;
+            let accounts = match accounts_res {
+                Ok(a) => a,
+                Err(e) => {
+                    warn!("[CAS] Could not fetch cypher accounts: {}", e.to_string());
+                    return Err(e);
+                }
+            };
+
+            info!("[CAS] Fetched {} cypher user accounts.", accounts.len());
+
+            for (idx, maybe_account) in accounts.iter().enumerate() {
+                if maybe_account.is_none() {
+                    info!("[CAS] Could not get account with key: {}", pubkeys[idx]);
+                    continue;
+                }
+
+                let cypher_user =
+                    get_zero_copy_account::<CypherUser>(maybe_account.as_ref().unwrap());
+
+                match self.sender.send(CypherUserWrapper {
+                    cypher_user,
+                    cypher_user_pubkey: pubkeys[idx],
+                }) {
+                    Ok(_) => (),
+                    Err(e) => {
+                        warn!(
+                            "[CAS] An error occurred while sending cypher user with key: {} - {}",
+                            pubkeys[idx], e
+                        );
+                    }
+                }
+            }
         }
 
+        Ok(())
+    }
+
+    async fn get_multiple_accounts(
+        self: &Arc<Self>,
+        pubkeys: &[Pubkey],
+    ) -> Result<Vec<Option<Account>>, ClientError> {
         let accounts_res = self
             .client
-            .get_multiple_accounts_with_commitment(&pubkeys, CommitmentConfig::confirmed())
+            .get_multiple_accounts_with_commitment(pubkeys, CommitmentConfig::confirmed())
             .await;
 
         let accounts = match accounts_res {
@@ -72,31 +115,7 @@ impl CypherAccountService {
                 return Err(e);
             }
         };
-        info!("[CAS] Fetched {} cypher user accounts.", accounts.len());
-
-        for (idx, maybe_account) in accounts.iter().enumerate() {
-            if maybe_account.is_none() {
-                info!("[CAS] Could not get account with key: {}", pubkeys[idx]);
-                continue;
-            }
-
-            let cypher_user = get_zero_copy_account::<CypherUser>(maybe_account.as_ref().unwrap());
-
-            match self.sender.send(CypherUserWrapper {
-                cypher_user,
-                cypher_user_pubkey: pubkeys[idx],
-            }) {
-                Ok(_) => (),
-                Err(e) => {
-                    warn!(
-                        "[CAS] An error occurred while sending cypher user with key: {} - {}",
-                        pubkeys[idx], e
-                    );
-                }
-            }
-        }
-
-        Ok(())
+        Ok(accounts)
     }
 
     async fn get_all_accounts_replay(self: &Arc<Self>) {
