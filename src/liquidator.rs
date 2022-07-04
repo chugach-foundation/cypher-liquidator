@@ -30,7 +30,7 @@ use crate::{
     config::{cypher_config::CypherConfig, liquidator_config::LiquidatorConfig},
     cypher_account_service::CypherUserWrapper,
     fast_tx_builder::FastTxnBuilder,
-    simulation::{simulate_liquidate_collateral, simulate_liquidate_market_collateral},
+    simulation::simulate_liquidate_collateral,
     utils::{
         derive_open_orders_address, get_cancel_order_ix, get_liquidate_collateral_ixs,
         get_liquidate_market_collateral_ixs, get_open_orders, get_serum_market,
@@ -168,16 +168,6 @@ impl Liquidator {
             }
         }
 
-        match self
-            .process_market_collateral(&cypher_group, cypher_user, cypher_user_pubkey)
-            .await
-        {
-            Ok(_) => (),
-            Err(e) => {
-                warn!("[LIQ] An error occurred when processing cypher user {} market collateral: {:?}", cypher_user_pubkey, e);
-            }
-        }
-
         Ok(())
     }
 
@@ -256,7 +246,6 @@ impl Liquidator {
                     let (
                         repay_amount,
                         liqee_asset_debit,
-                        market_insurance_debit,
                         global_insurance_credit,
                         global_insurance_debit,
                     ) = simulate_liquidate_collateral(
@@ -295,95 +284,6 @@ impl Liquidator {
                         Err(e) => {
                             warn!("[LIQ] Failed to submit transaction: {}", e.to_string());
                         }
-                    }
-                }
-            }
-        }
-
-        Ok(())
-    }
-
-    async fn process_market_collateral(
-        self: &Arc<Self>,
-        cypher_group: &CypherGroup,
-        cypher_user: &CypherUser,
-        cypher_user_pubkey: &Pubkey,
-    ) -> Result<(), LiquidatorError> {
-        // attempt to liquidate market collateral
-        let (can_liq, market_idx) = self
-            .check_market_collateral(cypher_group, cypher_user, cypher_user_pubkey)
-            .await;
-        if can_liq {
-            info!(
-                "[LIQ] Liqee: {} - Market collateral is liquidatable.",
-                cypher_user_pubkey
-            );
-
-            let cypher_token = cypher_group.get_cypher_token(market_idx);
-            let cypher_market = cypher_group.get_cypher_market(market_idx);
-
-            if self.check_can_liquidate(cypher_group).await {
-                let maybe_liqor = self.cypher_liqor.read().await;
-                if maybe_liqor.is_none() {
-                    tokio::time::sleep(Duration::from_millis(1000)).await;
-                    return Err(LiquidatorError::CypherLiqorNotFound);
-                }
-                let cypher_liqor = maybe_liqor.unwrap();
-
-                let cypher_group_config = self
-                    .cypher_config
-                    .get_group(self.liquidator_config.cluster.as_str())
-                    .unwrap();
-                let cypher_mkt = cypher_group_config.get_market_by_index(market_idx).unwrap();
-                let cypher_tok = cypher_group_config.get_token_by_index(market_idx).unwrap();
-
-                let slot = self.chain_meta_service.get_latest_slot().await;
-                let vault = get_token_account(Arc::clone(&self.client), &cypher_token.vault)
-                    .await
-                    .unwrap();
-
-                let (
-                    repay_amount,
-                    liqor_pc_credit,
-                    liqee_collateral_debit,
-                    market_insurance_debit,
-                    global_insurance_credit,
-                ) = simulate_liquidate_market_collateral(
-                    cypher_group,
-                    &cypher_liqor,
-                    cypher_user,
-                    vault,
-                    slot,
-                    market_idx,
-                );
-
-                if repay_amount == 0
-                    && liqor_pc_credit == 0
-                    && liqee_collateral_debit == 0
-                    && market_insurance_debit == 0
-                    && global_insurance_credit == 0
-                {
-                    return Err(LiquidatorError::ZeroedSimulation);
-                }
-
-                info!("[LIQ] Liqee: {} - Cypher Market: {} - Cypher Token: {} - C Asset Mint: {} - Dex Market: {} - Attempting to liquidate.", cypher_user_pubkey, cypher_mkt.name, cypher_tok.symbol, cypher_token.mint, cypher_market.dex_market);
-
-                let liq_ixs = get_liquidate_market_collateral_ixs(
-                    cypher_group,
-                    cypher_market,
-                    cypher_token,
-                    &self.cypher_liqor_pubkey,
-                    cypher_user_pubkey,
-                    &self.keypair,
-                );
-
-                let blockhash = self.chain_meta_service.get_latest_blockhash().await;
-
-                let res = self.submit_transactions(liq_ixs, blockhash).await;
-                match res {
-                    Ok(_) => (),
-                    Err(e) => {
-                        warn!("[LIQ] Failed to submit transaction: {}", e.to_string());
                     }
                 }
             }
@@ -590,24 +490,6 @@ impl Liquidator {
                     "[LIQ] LIQOR: {} - {} Position - Total Borrows: {} - Total Deposits: {}",
                     self.cypher_liqor_pubkey, token.symbol, total_borrows, total_deposits
                 );
-
-                if token.token_index != QUOTE_TOKEN_IDX {
-                    let maybe_ca = cypher_liqor.get_c_asset(token.token_index);
-                    let cypher_asset = match maybe_ca {
-                        Ok(ca) => ca,
-                        Err(_) => {
-                            continue;
-                        }
-                    };
-
-                    info!(
-                        "[LIQ] LIQOR: {} - {} cAsset -  Mint Collateral: {} - Debt Shares: {}",
-                        self.cypher_liqor_pubkey,
-                        token.symbol,
-                        cypher_asset.collateral,
-                        cypher_asset.debt_shares
-                    );
-                };
             }
         }
 
@@ -646,9 +528,9 @@ impl Liquidator {
             let quote_position = cypher_user.get_position(QUOTE_TOKEN_IDX).unwrap();
             let has_quote_borrows = quote_position.base_borrows() > Number::ZERO;
 
-            for asset in cypher_user.iter_c_assets() {
-                if asset.oo_info.is_account_open {
-                    let market_idx = asset.market_idx as usize;
+            for position in cypher_user.iter_positions() {
+                if position.oo_info.is_account_open {
+                    let market_idx = position.market_idx as usize;
                     let cypher_market = cypher_group.get_cypher_market(market_idx);
                     let cypher_token = cypher_group.get_cypher_token(market_idx);
                     let maybe_cp = cypher_user.get_position(market_idx);
@@ -726,24 +608,6 @@ impl Liquidator {
                         "[LIQ] Liqee: {} - {} Position - Total Borrows: {} - Total Deposits: {}",
                         cypher_user_pubkey, token.symbol, total_borrows, total_deposits
                     );
-
-                    if token.token_index != QUOTE_TOKEN_IDX {
-                        let maybe_ca = cypher_user.get_c_asset(token.token_index);
-                        let cypher_asset = match maybe_ca {
-                            Ok(ca) => ca,
-                            Err(_) => {
-                                continue;
-                            }
-                        };
-
-                        info!(
-                            "[LIQ] Liqee: {} - {} cAsset -  Mint Collateral {} - Debt Shares {}",
-                            cypher_user_pubkey,
-                            token.symbol,
-                            cypher_asset.collateral,
-                            cypher_asset.debt_shares
-                        );
-                    };
                 }
             }
 
@@ -823,97 +687,6 @@ impl Liquidator {
         let blockhash = self.chain_meta_service.get_latest_blockhash().await;
 
         self.submit_transactions(ixs, blockhash).await
-    }
-
-    async fn check_market_collateral(
-        self: &Arc<Self>,
-        cypher_group: &CypherGroup,
-        cypher_user: &CypherUser,
-        cypher_user_pubkey: &Pubkey,
-    ) -> (bool, usize) {
-        let cypher_group_config = self
-            .cypher_config
-            .get_group(self.liquidator_config.cluster.as_str())
-            .unwrap();
-        let tokens = &cypher_group_config.tokens;
-        let slot = self.chain_meta_service.get_latest_slot().await;
-        let mut liquidatable: bool = false;
-        let mut token_index: usize = usize::default();
-
-        for token in tokens {
-            let cypher_token = cypher_group.get_cypher_token(token.token_index);
-
-            if token.token_index != QUOTE_TOKEN_IDX {
-                let cypher_market = cypher_group.get_cypher_market(token.token_index);
-                let mint_maint_ratio = cypher_market.mint_maint_ratio();
-
-                let maybe_uca = cypher_user.get_c_asset(token.token_index);
-                let user_c_asset = match maybe_uca {
-                    Ok(u) => u,
-                    Err(_) => {
-                        continue;
-                    }
-                };
-                let maybe_amcr = user_c_asset.get_mint_c_ratio(cypher_market, slot, true);
-                let asset_mint_c_ratio = match maybe_amcr {
-                    Ok(amcr) => amcr,
-                    Err(_) => {
-                        continue;
-                    }
-                };
-
-                if asset_mint_c_ratio < mint_maint_ratio {
-                    info!(
-                        "[LIQ] Liqee: {} - Margin C Ratio below Mint Maintenance Ratio.",
-                        cypher_user_pubkey
-                    );
-
-                    if cypher_user.is_bankrupt(cypher_group).unwrap() {
-                        info!("[LIQ] Liqee: {} - USER IS BANKRUPT!", cypher_user_pubkey);
-                    }
-
-                    liquidatable = true;
-                    token_index = token.token_index;
-                }
-            }
-
-            if self.liquidator_config.log_liqee_healths {
-                let maybe_cp = cypher_user.get_position(token.token_index);
-                let cypher_position = match maybe_cp {
-                    Ok(cp) => cp,
-                    Err(_) => {
-                        continue;
-                    }
-                };
-
-                let total_borrows = cypher_position.total_borrows(cypher_token);
-                let total_deposits = cypher_position.total_deposits(cypher_token);
-                info!(
-                    "[LIQ] Liqee: {} - {} Position - Total Borrows: {} - Total Deposits: {}",
-                    cypher_user_pubkey, token.symbol, total_borrows, total_deposits
-                );
-
-                if token.token_index != QUOTE_TOKEN_IDX {
-                    let maybe_ca = cypher_user.get_c_asset(token.token_index);
-                    let cypher_asset = match maybe_ca {
-                        Ok(ca) => ca,
-                        Err(_) => {
-                            continue;
-                        }
-                    };
-
-                    info!(
-                        "[LIQ] Liqee: {} - {} cAsset -  Mint Collateral {} - Debt Shares {}",
-                        cypher_user_pubkey,
-                        token.symbol,
-                        cypher_asset.collateral,
-                        cypher_asset.debt_shares
-                    );
-                };
-            }
-        }
-
-        (liquidatable, token_index)
     }
 
     async fn get_cypher_group_and_liqor(self: &Arc<Self>) -> Result<(), ClientError> {

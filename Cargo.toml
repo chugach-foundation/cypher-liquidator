@@ -10,14 +10,14 @@ solana-client = "~1.10.25"
 solana-sdk = { version = "~1.10.25" }  
 solana-account-decoder = "~1.10.25"
 solana-transaction-status = "~1.10.25"
-cypher = { path = "../cypher-protocol/programs/cypher", features = ["no-entrypoint", "mainnet-beta"] }
+cypher = { path = "../cypher-protocol/programs/cypher", features = ["no-entrypoint"] }
 cypher-tester = { path="../cypher-protocol/tester" }
 serum_dex = { git = "https://github.com/chugach-foundation/serum-dex.git", rev="2fab8b9", features = ["fuzz", "no-entrypoint"] }
 jet-proto-math = { git = "https://github.com/chugach-foundation/jet-program-libraries.git", rev="ac8909b" }
 jet-proto-proc-macros = { git = "https://github.com/chugach-foundation/jet-program-libraries.git", rev="ac8909b" }
 spl-token = { version = "3.1.1", features = ["no-entrypoint"] }
-anchor-lang = { git = "https://github.com/chugach-foundation/anchor.git", rev="e14de2e" }
-anchor-client = { git = "https://github.com/chugach-foundation/anchor.git", rev="e14de2e" }
+anchor-lang = { git = "https://github.com/chugach-foundation/anchor.git", rev="9131d9f" }
+anchor-client = { git = "https://github.com/chugach-foundation/anchor.git", rev="9131d9f" }
 tokio = { version = "1.14.1", features = ["rt", "macros"] }
 dashmap = "5.3.4"
 base64 = "0.13.0"

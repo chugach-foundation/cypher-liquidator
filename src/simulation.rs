@@ -14,7 +14,7 @@ pub fn simulate_liquidate_collateral(
     cypher_liqee_user: &CypherUser,
     asset_mint: Pubkey,
     liab_mint: Pubkey,
-) -> (u64, u64, u64, u64, u64) {
+) -> (u64, u64, u64, u64) {
     calc_collateral_liquidation(
         cypher_group,
         cypher_liqor_user,
@@ -39,7 +39,7 @@ fn calc_collateral_liquidation(
     liqee_user: &CypherUser,
     asset_mint: Pubkey,
     liab_mint: Pubkey,
-) -> (u64, u64, u64, u64, u64) {
+) -> (u64, u64, u64, u64) {
     let (asset_token_idx, asset_price) = get_token_info(group, asset_mint);
     let (liab_token_idx, liab_price) = get_token_info(group, liab_mint);
 
@@ -90,7 +90,7 @@ fn calc_collateral_liquidation(
     let repay_amount = (repay_value / liab_price).as_u64(0);
     let repay_value = Number::from(repay_amount * liab_price);
     let liqor_credit_value = repay_value * liqor_fee;
-    let (liqee_asset_debit, market_insurance_debit, global_insurance_credit) = if is_bankrupt {
+    let (liqee_asset_debit, global_insurance_debit, global_insurance_credit) = if is_bankrupt {
         if liab_mint == quote_mint::ID {
             unreachable!()
         } else {
@@ -106,93 +106,10 @@ fn calc_collateral_liquidation(
             global_insurance_credit_value.as_u64(0),
         )
     };
-
-    let global_insurance_debit = 0;
     (
         repay_amount,
         liqee_asset_debit,
-        market_insurance_debit,
         global_insurance_credit,
         global_insurance_debit,
-    )
-}
-
-pub fn simulate_liquidate_market_collateral(
-    group: &CypherGroup,
-    liqor_user: &CypherUser,
-    liqee_user: &CypherUser,
-    vault: UiTokenAmount,
-    cur_slot: u64,
-    market_idx: usize,
-) -> (u64, u64, u64, u64, u64) {
-    calc_market_collateral_liquidation(group, liqor_user, liqee_user, vault, cur_slot, market_idx)
-}
-
-fn calc_market_collateral_liquidation(
-    group: &CypherGroup,
-    liqor_user: &CypherUser,
-    liqee_user: &CypherUser,
-    vault: UiTokenAmount,
-    cur_slot: u64,
-    market_idx: usize,
-) -> (u64, u64, u64, u64, u64) {
-    let market = group.get_cypher_market(market_idx);
-    let market_price = market.market_price;
-    let target_ratio = market.mint_partial_ratio();
-    let liqor_fee = group.liq_liqor_fee();
-    let insurance_fee = group.liq_insurance_fee();
-
-    let cypher_token = group.get_cypher_token(market_idx);
-    let liqor_coin_balance = liqor_user
-        .get_position(market_idx)
-        .unwrap()
-        .total_deposits(cypher_token)
-        .as_u64(0);
-
-    let liqee_c_asset = liqee_user.get_c_asset(market_idx).unwrap();
-    let excess_debt = {
-        let oracle_price = market.get_oracle_price(cur_slot).unwrap();
-        let debt_shares_value: Number = (liqee_c_asset.debt_shares * oracle_price).into();
-        let excess_debt_value = (debt_shares_value * target_ratio
-            - liqee_c_asset.collateral.into())
-            / (target_ratio - liqor_fee - insurance_fee);
-        (excess_debt_value / market_price).as_u64(0)
-    };
-    let max_repay_amount = min(excess_debt, liqee_c_asset.debt_shares);
-
-    let is_bankrupt = {
-        let min_collateral_required =
-            ((liqor_fee + insurance_fee) * market.market_price).as_u64_ceil(0);
-        liqee_c_asset.collateral < min_collateral_required
-    };
-    let max_pc_qty_for_swap = if is_bankrupt {
-        (Number::from(market.insurance_fund) / liqor_fee).as_u64(0)
-    } else {
-        (Number::from(liqee_c_asset.collateral) / (liqor_fee + insurance_fee)).as_u64(0)
-    };
-    let max_coin_qty_for_swap = min(
-        min(liqor_coin_balance, vault.amount.parse::<u64>().unwrap()),
-        max_pc_qty_for_swap / market_price,
-    );
-
-    let repay_amount = min(max_repay_amount, max_coin_qty_for_swap);
-    let repay_value = Number::from(repay_amount * market_price);
-    let liqor_pc_credit = (repay_value * liqor_fee).as_u64(0);
-    let (liqee_collateral_debit, market_insurance_debit, global_insurance_credit) = if is_bankrupt {
-        (liqee_c_asset.collateral, liqor_pc_credit, 0)
-    } else {
-        let global_insurance_credit = (repay_value * insurance_fee).as_u64(0);
-        (
-            liqor_pc_credit + global_insurance_credit,
-            0,
-            global_insurance_credit,
-        )
-    };
-    (
-        repay_amount,
-        liqor_pc_credit,
-        liqee_collateral_debit,
-        market_insurance_debit,
-        global_insurance_credit,
     )
 }

@@ -89,9 +89,22 @@ checksum = "6b2d54853319fd101b8dd81de382bcbf3e03410a64d8928bbee85a3e7dcde483"
 [[package]]
 name = "anchor-attribute-access-control"
 version = "0.24.2"
-source = "git+https://github.com/chugach-foundation/anchor.git?rev=e14de2e#e14de2e0fc8d8238289b346b3d8b5deb7a1eb545"
+source = "git+https://github.com/murlokito/anchor.git?rev=532de4e#532de4e99a50a8f81bce281f9441eda79c2346b7"
 dependencies = [
- "anchor-syn",
+ "anchor-syn 0.24.2 (git+https://github.com/murlokito/anchor.git?rev=532de4e)",
+ "anyhow",
+ "proc-macro2 1.0.39",
+ "quote 1.0.18",
+ "regex",
+ "syn 1.0.96",
+]
+
+[[package]]
+name = "anchor-attribute-access-control"
+version = "0.24.2"
+source = "git+https://github.com/chugach-foundation/anchor.git?rev=9131d9f#9131d9f6db1f69ac829179e702fc1337f1993411"
+dependencies = [
+ "anchor-syn 0.24.2 (git+https://github.com/chugach-foundation/anchor.git?rev=9131d9f)",
  "anyhow",
  "proc-macro2 1.0.39",
  "quote 1.0.18",
@@ -102,9 +115,23 @@ dependencies = [
 [[package]]
 name = "anchor-attribute-account"
 version = "0.24.2"
-source = "git+https://github.com/chugach-foundation/anchor.git?rev=e14de2e#e14de2e0fc8d8238289b346b3d8b5deb7a1eb545"
+source = "git+https://github.com/murlokito/anchor.git?rev=532de4e#532de4e99a50a8f81bce281f9441eda79c2346b7"
 dependencies = [
- "anchor-syn",
+ "anchor-syn 0.24.2 (git+https://github.com/murlokito/anchor.git?rev=532de4e)",
+ "anyhow",
+ "bs58 0.4.0",
+ "proc-macro2 1.0.39",
+ "quote 1.0.18",
+ "rustversion",
+ "syn 1.0.96",
+]
+
+[[package]]
+name = "anchor-attribute-account"
+version = "0.24.2"
+source = "git+https://github.com/chugach-foundation/anchor.git?rev=9131d9f#9131d9f6db1f69ac829179e702fc1337f1993411"
+dependencies = [
+ "anchor-syn 0.24.2 (git+https://github.com/chugach-foundation/anchor.git?rev=9131d9f)",
  "anyhow",
  "bs58 0.4.0",
  "proc-macro2 1.0.39",
@@ -116,9 +143,19 @@ dependencies = [
 [[package]]
 name = "anchor-attribute-constant"
 version = "0.24.2"
-source = "git+https://github.com/chugach-foundation/anchor.git?rev=e14de2e#e14de2e0fc8d8238289b346b3d8b5deb7a1eb545"
+source = "git+https://github.com/murlokito/anchor.git?rev=532de4e#532de4e99a50a8f81bce281f9441eda79c2346b7"
 dependencies = [
- "anchor-syn",
+ "anchor-syn 0.24.2 (git+https://github.com/murlokito/anchor.git?rev=532de4e)",
+ "proc-macro2 1.0.39",
+ "syn 1.0.96",
+]
+
+[[package]]
+name = "anchor-attribute-constant"
+version = "0.24.2"
+source = "git+https://github.com/chugach-foundation/anchor.git?rev=9131d9f#9131d9f6db1f69ac829179e702fc1337f1993411"
+dependencies = [
+ "anchor-syn 0.24.2 (git+https://github.com/chugach-foundation/anchor.git?rev=9131d9f)",
  "proc-macro2 1.0.39",
  "syn 1.0.96",
 ]
@@ -126,9 +163,20 @@ dependencies = [
 [[package]]
 name = "anchor-attribute-error"
 version = "0.24.2"
-source = "git+https://github.com/chugach-foundation/anchor.git?rev=e14de2e#e14de2e0fc8d8238289b346b3d8b5deb7a1eb545"
+source = "git+https://github.com/murlokito/anchor.git?rev=532de4e#532de4e99a50a8f81bce281f9441eda79c2346b7"
 dependencies = [
- "anchor-syn",
+ "anchor-syn 0.24.2 (git+https://github.com/murlokito/anchor.git?rev=532de4e)",
+ "proc-macro2 1.0.39",
+ "quote 1.0.18",
+ "syn 1.0.96",
+]
+
+[[package]]
+name = "anchor-attribute-error"
+version = "0.24.2"
+source = "git+https://github.com/chugach-foundation/anchor.git?rev=9131d9f#9131d9f6db1f69ac829179e702fc1337f1993411"
+dependencies = [
+ "anchor-syn 0.24.2 (git+https://github.com/chugach-foundation/anchor.git?rev=9131d9f)",
  "proc-macro2 1.0.39",
  "quote 1.0.18",
  "syn 1.0.96",
@@ -137,9 +185,21 @@ dependencies = [
 [[package]]
 name = "anchor-attribute-event"
 version = "0.24.2"
-source = "git+https://github.com/chugach-foundation/anchor.git?rev=e14de2e#e14de2e0fc8d8238289b346b3d8b5deb7a1eb545"
+source = "git+https://github.com/murlokito/anchor.git?rev=532de4e#532de4e99a50a8f81bce281f9441eda79c2346b7"
 dependencies = [
- "anchor-syn",
+ "anchor-syn 0.24.2 (git+https://github.com/murlokito/anchor.git?rev=532de4e)",
+ "anyhow",
+ "proc-macro2 1.0.39",
+ "quote 1.0.18",
+ "syn 1.0.96",
+]
+
+[[package]]
+name = "anchor-attribute-event"
+version = "0.24.2"
+source = "git+https://github.com/chugach-foundation/anchor.git?rev=9131d9f#9131d9f6db1f69ac829179e702fc1337f1993411"
+dependencies = [
+ "anchor-syn 0.24.2 (git+https://github.com/chugach-foundation/anchor.git?rev=9131d9f)",
  "anyhow",
  "proc-macro2 1.0.39",
  "quote 1.0.18",
@@ -149,9 +209,22 @@ dependencies = [
 [[package]]
 name = "anchor-attribute-interface"
 version = "0.24.2"
-source = "git+https://github.com/chugach-foundation/anchor.git?rev=e14de2e#e14de2e0fc8d8238289b346b3d8b5deb7a1eb545"
+source = "git+https://github.com/murlokito/anchor.git?rev=532de4e#532de4e99a50a8f81bce281f9441eda79c2346b7"
 dependencies = [
- "anchor-syn",
+ "anchor-syn 0.24.2 (git+https://github.com/murlokito/anchor.git?rev=532de4e)",
+ "anyhow",
+ "heck 0.3.3",
+ "proc-macro2 1.0.39",
+ "quote 1.0.18",
+ "syn 1.0.96",
+]
+
+[[package]]
+name = "anchor-attribute-interface"
+version = "0.24.2"
+source = "git+https://github.com/chugach-foundation/anchor.git?rev=9131d9f#9131d9f6db1f69ac829179e702fc1337f1993411"
+dependencies = [
+ "anchor-syn 0.24.2 (git+https://github.com/chugach-foundation/anchor.git?rev=9131d9f)",
  "anyhow",
  "heck 0.3.3",
  "proc-macro2 1.0.39",
@@ -162,9 +235,21 @@ dependencies = [
 [[package]]
 name = "anchor-attribute-program"
 version = "0.24.2"
-source = "git+https://github.com/chugach-foundation/anchor.git?rev=e14de2e#e14de2e0fc8d8238289b346b3d8b5deb7a1eb545"
+source = "git+https://github.com/murlokito/anchor.git?rev=532de4e#532de4e99a50a8f81bce281f9441eda79c2346b7"
 dependencies = [
- "anchor-syn",
+ "anchor-syn 0.24.2 (git+https://github.com/murlokito/anchor.git?rev=532de4e)",
+ "anyhow",
+ "proc-macro2 1.0.39",
+ "quote 1.0.18",
+ "syn 1.0.96",
+]
+
+[[package]]
+name = "anchor-attribute-program"
+version = "0.24.2"
+source = "git+https://github.com/chugach-foundation/anchor.git?rev=9131d9f#9131d9f6db1f69ac829179e702fc1337f1993411"
+dependencies = [
+ "anchor-syn 0.24.2 (git+https://github.com/chugach-foundation/anchor.git?rev=9131d9f)",
  "anyhow",
  "proc-macro2 1.0.39",
  "quote 1.0.18",
@@ -174,9 +259,21 @@ dependencies = [
 [[package]]
 name = "anchor-attribute-state"
 version = "0.24.2"
-source = "git+https://github.com/chugach-foundation/anchor.git?rev=e14de2e#e14de2e0fc8d8238289b346b3d8b5deb7a1eb545"
+source = "git+https://github.com/murlokito/anchor.git?rev=532de4e#532de4e99a50a8f81bce281f9441eda79c2346b7"
 dependencies = [
- "anchor-syn",
+ "anchor-syn 0.24.2 (git+https://github.com/murlokito/anchor.git?rev=532de4e)",
+ "anyhow",
+ "proc-macro2 1.0.39",
+ "quote 1.0.18",
+ "syn 1.0.96",
+]
+
+[[package]]
+name = "anchor-attribute-state"
+version = "0.24.2"
+source = "git+https://github.com/chugach-foundation/anchor.git?rev=9131d9f#9131d9f6db1f69ac829179e702fc1337f1993411"
+dependencies = [
+ "anchor-syn 0.24.2 (git+https://github.com/chugach-foundation/anchor.git?rev=9131d9f)",
  "anyhow",
  "proc-macro2 1.0.39",
  "quote 1.0.18",
@@ -186,9 +283,25 @@ dependencies = [
 [[package]]
 name = "anchor-client"
 version = "0.24.2"
-source = "git+https://github.com/chugach-foundation/anchor.git?rev=e14de2e#e14de2e0fc8d8238289b346b3d8b5deb7a1eb545"
+source = "git+https://github.com/murlokito/anchor.git?rev=532de4e#532de4e99a50a8f81bce281f9441eda79c2346b7"
 dependencies = [
- "anchor-lang",
+ "anchor-lang 0.24.2 (git+https://github.com/murlokito/anchor.git?rev=532de4e)",
+ "anyhow",
+ "regex",
+ "serde",
+ "solana-account-decoder",
+ "solana-client",
+ "solana-sdk",
+ "thiserror",
+ "url",
+]
+
+[[package]]
+name = "anchor-client"
+version = "0.24.2"
+source = "git+https://github.com/chugach-foundation/anchor.git?rev=9131d9f#9131d9f6db1f69ac829179e702fc1337f1993411"
+dependencies = [
+ "anchor-lang 0.24.2 (git+https://github.com/chugach-foundation/anchor.git?rev=9131d9f)",
  "anyhow",
  "regex",
  "serde",
@@ -202,9 +315,21 @@ dependencies = [
 [[package]]
 name = "anchor-derive-accounts"
 version = "0.24.2"
-source = "git+https://github.com/chugach-foundation/anchor.git?rev=e14de2e#e14de2e0fc8d8238289b346b3d8b5deb7a1eb545"
+source = "git+https://github.com/murlokito/anchor.git?rev=532de4e#532de4e99a50a8f81bce281f9441eda79c2346b7"
 dependencies = [
- "anchor-syn",
+ "anchor-syn 0.24.2 (git+https://github.com/murlokito/anchor.git?rev=532de4e)",
+ "anyhow",
+ "proc-macro2 1.0.39",
+ "quote 1.0.18",
+ "syn 1.0.96",
+]
+
+[[package]]
+name = "anchor-derive-accounts"
+version = "0.24.2"
+source = "git+https://github.com/chugach-foundation/anchor.git?rev=9131d9f#9131d9f6db1f69ac829179e702fc1337f1993411"
+dependencies = [
+ "anchor-syn 0.24.2 (git+https://github.com/chugach-foundation/anchor.git?rev=9131d9f)",
  "anyhow",
  "proc-macro2 1.0.39",
  "quote 1.0.18",
@@ -214,17 +339,40 @@ dependencies = [
 [[package]]
 name = "anchor-lang"
 version = "0.24.2"
-source = "git+https://github.com/chugach-foundation/anchor.git?rev=e14de2e#e14de2e0fc8d8238289b346b3d8b5deb7a1eb545"
+source = "git+https://github.com/murlokito/anchor.git?rev=532de4e#532de4e99a50a8f81bce281f9441eda79c2346b7"
 dependencies = [
- "anchor-attribute-access-control",
- "anchor-attribute-account",
- "anchor-attribute-constant",
- "anchor-attribute-error",
- "anchor-attribute-event",
- "anchor-attribute-interface",
- "anchor-attribute-program",
- "anchor-attribute-state",
- "anchor-derive-accounts",
+ "anchor-attribute-access-control 0.24.2 (git+https://github.com/murlokito/anchor.git?rev=532de4e)",
+ "anchor-attribute-account 0.24.2 (git+https://github.com/murlokito/anchor.git?rev=532de4e)",
+ "anchor-attribute-constant 0.24.2 (git+https://github.com/murlokito/anchor.git?rev=532de4e)",
+ "anchor-attribute-error 0.24.2 (git+https://github.com/murlokito/anchor.git?rev=532de4e)",
+ "anchor-attribute-event 0.24.2 (git+https://github.com/murlokito/anchor.git?rev=532de4e)",
+ "anchor-attribute-interface 0.24.2 (git+https://github.com/murlokito/anchor.git?rev=532de4e)",
+ "anchor-attribute-program 0.24.2 (git+https://github.com/murlokito/anchor.git?rev=532de4e)",
+ "anchor-attribute-state 0.24.2 (git+https://github.com/murlokito/anchor.git?rev=532de4e)",
+ "anchor-derive-accounts 0.24.2 (git+https://github.com/murlokito/anchor.git?rev=532de4e)",
+ "arrayref",
+ "base64 0.13.0",
+ "bincode",
+ "borsh",
+ "bytemuck",
+ "solana-program",
+ "thiserror",
+]
+
+[[package]]
+name = "anchor-lang"
+version = "0.24.2"
+source = "git+https://github.com/chugach-foundation/anchor.git?rev=9131d9f#9131d9f6db1f69ac829179e702fc1337f1993411"
+dependencies = [
+ "anchor-attribute-access-control 0.24.2 (git+https://github.com/chugach-foundation/anchor.git?rev=9131d9f)",
+ "anchor-attribute-account 0.24.2 (git+https://github.com/chugach-foundation/anchor.git?rev=9131d9f)",
+ "anchor-attribute-constant 0.24.2 (git+https://github.com/chugach-foundation/anchor.git?rev=9131d9f)",
+ "anchor-attribute-error 0.24.2 (git+https://github.com/chugach-foundation/anchor.git?rev=9131d9f)",
+ "anchor-attribute-event 0.24.2 (git+https://github.com/chugach-foundation/anchor.git?rev=9131d9f)",
+ "anchor-attribute-interface 0.24.2 (git+https://github.com/chugach-foundation/anchor.git?rev=9131d9f)",
+ "anchor-attribute-program 0.24.2 (git+https://github.com/chugach-foundation/anchor.git?rev=9131d9f)",
+ "anchor-attribute-state 0.24.2 (git+https://github.com/chugach-foundation/anchor.git?rev=9131d9f)",
+ "anchor-derive-accounts 0.24.2 (git+https://github.com/chugach-foundation/anchor.git?rev=9131d9f)",
  "arrayref",
  "base64 0.13.0",
  "bincode",
@@ -237,9 +385,9 @@ dependencies = [
 [[package]]
 name = "anchor-spl"
 version = "0.24.2"
-source = "git+https://github.com/chugach-foundation/anchor.git?rev=e14de2e#e14de2e0fc8d8238289b346b3d8b5deb7a1eb545"
+source = "git+https://github.com/chugach-foundation/anchor.git?rev=9131d9f#9131d9f6db1f69ac829179e702fc1337f1993411"
 dependencies = [
- "anchor-lang",
+ "anchor-lang 0.24.2 (git+https://github.com/chugach-foundation/anchor.git?rev=9131d9f)",
  "serum_dex 0.5.6 (git+https://github.com/project-serum/serum-dex?rev=85b4f14)",
  "solana-program",
  "spl-associated-token-account",
@@ -249,7 +397,25 @@ dependencies = [
 [[package]]
 name = "anchor-syn"
 version = "0.24.2"
-source = "git+https://github.com/chugach-foundation/anchor.git?rev=e14de2e#e14de2e0fc8d8238289b346b3d8b5deb7a1eb545"
+source = "git+https://github.com/murlokito/anchor.git?rev=532de4e#532de4e99a50a8f81bce281f9441eda79c2346b7"
+dependencies = [
+ "anyhow",
+ "bs58 0.3.1",
+ "heck 0.3.3",
+ "proc-macro2 1.0.39",
+ "proc-macro2-diagnostics",
+ "quote 1.0.18",
+ "serde",
+ "serde_json",
+ "sha2 0.9.9",
+ "syn 1.0.96",
+ "thiserror",
+]
+
+[[package]]
+name = "anchor-syn"
+version = "0.24.2"
+source = "git+https://github.com/chugach-foundation/anchor.git?rev=9131d9f#9131d9f6db1f69ac829179e702fc1337f1993411"
 dependencies = [
  "anyhow",
  "bs58 0.3.1",
@@ -868,15 +1034,15 @@ dependencies = [
 
 [[package]]
 name = "cypher"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
- "anchor-lang",
+ "anchor-lang 0.24.2 (git+https://github.com/chugach-foundation/anchor.git?rev=9131d9f)",
  "anchor-spl",
  "bitflags",
  "bytemuck",
  "jet-proto-math",
  "jet-proto-proc-macros",
- "pyth-client",
+ "pyth-sdk-solana",
  "static_assertions",
 ]
 
@@ -884,8 +1050,8 @@ dependencies = [
 name = "cypher-liquidator"
 version = "0.1.0"
 dependencies = [
- "anchor-client",
- "anchor-lang",
+ "anchor-client 0.24.2 (git+https://github.com/chugach-foundation/anchor.git?rev=9131d9f)",
+ "anchor-lang 0.24.2 (git+https://github.com/chugach-foundation/anchor.git?rev=9131d9f)",
  "arrayref",
  "base64 0.13.0",
  "bytemuck",
@@ -910,17 +1076,17 @@ dependencies = [
 
 [[package]]
 name = "cypher-tester"
-version = "0.0.0"
+version = "0.2.0"
 dependencies = [
- "anchor-client",
- "anchor-lang",
+ "anchor-client 0.24.2 (git+https://github.com/murlokito/anchor.git?rev=532de4e)",
+ "anchor-lang 0.24.2 (git+https://github.com/murlokito/anchor.git?rev=532de4e)",
  "arbitrary",
  "arrayref",
  "bytemuck",
  "cypher",
  "jet-proto-math",
  "libfuzzer-sys",
- "pyth-client",
+ "pyth-sdk-solana",
  "rand 0.7.3",
  "safe-transmute",
  "serum_dex 0.5.6 (git+https://github.com/chugach-foundation/serum-dex.git?rev=2fab8b9)",
@@ -1061,6 +1227,12 @@ dependencies = [
  "quote 0.6.13",
  "syn 0.15.44",
 ]
+
+[[package]]
+name = "dyn-clone"
+version = "1.0.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "140206b78fb2bc3edbcfc9b5ccbd0b30699cfe8d348b8b31b330e47df5291a5a"
 
 [[package]]
 name = "ed25519"
@@ -1518,6 +1690,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "62b467343b94ba476dcb2500d242dadbb39557df889310ac77c5d99100aaac33"
 dependencies = [
  "libc",
+]
+
+[[package]]
+name = "hex"
+version = "0.4.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7f24254aa9a54b5c858eaee2f5bccdb46aaf0e486a595ed5fd8f86ba55232a70"
+dependencies = [
+ "serde",
 ]
 
 [[package]]
@@ -2443,16 +2624,30 @@ dependencies = [
 ]
 
 [[package]]
-name = "pyth-client"
-version = "0.5.1"
+name = "pyth-sdk"
+version = "0.4.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "398f9e51e126a13903254c56f75b3201583db075d0fbb77e931f7515af9b3d16"
+checksum = "f262b88557d8f152a247e1be786a8359d63112fac0a6e49fa41082a8ef789e8d"
+dependencies = [
+ "borsh",
+ "borsh-derive",
+ "hex",
+ "schemars",
+ "serde",
+]
+
+[[package]]
+name = "pyth-sdk-solana"
+version = "0.4.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2aed1a0b714f91cb104cc025eb806782e30aa63c23259724e79efd609294a2c9"
 dependencies = [
  "borsh",
  "borsh-derive",
  "bytemuck",
  "num-derive",
  "num-traits",
+ "pyth-sdk",
  "serde",
  "solana-program",
  "thiserror",
@@ -2892,6 +3087,30 @@ dependencies = [
 ]
 
 [[package]]
+name = "schemars"
+version = "0.8.10"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1847b767a3d62d95cbf3d8a9f0e421cf57a0d8aa4f411d4b16525afb0284d4ed"
+dependencies = [
+ "dyn-clone",
+ "schemars_derive",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "schemars_derive"
+version = "0.8.10"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "af4d7e1b012cb3d9129567661a63755ea4b8a7386d339dc945ae187e403c6743"
+dependencies = [
+ "proc-macro2 1.0.39",
+ "quote 1.0.18",
+ "serde_derive_internals",
+ "syn 1.0.96",
+]
+
+[[package]]
 name = "scopeguard"
 version = "1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2997,6 +3216,17 @@ name = "serde_derive"
 version = "1.0.137"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1f26faba0c3959972377d3b2d306ee9f71faee9714294e41bb777f83f88578be"
+dependencies = [
+ "proc-macro2 1.0.39",
+ "quote 1.0.18",
+ "syn 1.0.96",
+]
+
+[[package]]
+name = "serde_derive_internals"
+version = "0.26.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "85bf8229e7920a9f636479437026331ce11aa132b4dde37d121944a44d6e5f3c"
 dependencies = [
  "proc-macro2 1.0.39",
  "quote 1.0.18",
