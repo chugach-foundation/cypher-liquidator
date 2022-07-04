@@ -63,13 +63,12 @@ fn calc_collateral_liquidation(
         assert_eq!(asset_mint, quote_mint::ID);
         if liab_mint == quote_mint::ID {
             let repay_amount = min(max_repay_value.as_u64(0), group.insurance_fund);
-            return (repay_amount, 0, 0, 0, repay_amount);
+            return (repay_amount, 0, 0, repay_amount);
         }
     }
 
     let max_value_for_swap = if is_bankrupt {
-        let liab_market = group.get_cypher_market(liab_token_idx);
-        Number::from(liab_market.insurance_fund) / liqor_fee
+        Number::from(group.insurance_fund) / liqor_fee
     } else {
         let asset_position_value = liqee_user
             .get_position(asset_token_idx)

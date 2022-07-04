@@ -33,8 +33,8 @@ use crate::{
     simulation::simulate_liquidate_collateral,
     utils::{
         derive_open_orders_address, get_cancel_order_ix, get_liquidate_collateral_ixs,
-        get_liquidate_market_collateral_ixs, get_open_orders, get_serum_market,
-        get_serum_open_orders, get_settle_funds_ix, get_token_account, get_zero_copy_account,
+        get_open_orders, get_serum_market,
+        get_serum_open_orders, get_settle_funds_ix, get_zero_copy_account,
         OpenOrder,
     },
 };
@@ -258,7 +258,6 @@ impl Liquidator {
 
                     if repay_amount == 0
                         && liqee_asset_debit == 0
-                        && market_insurance_debit == 0
                         && global_insurance_credit == 0
                         && global_insurance_debit == 0
                     {
@@ -562,27 +561,27 @@ impl Liquidator {
                     let open_orders = get_open_orders(&open_orders_account);
 
                     if cypher_position.base_borrows() > Number::ZERO
-                        && asset.oo_info.coin_total != 0
+                        && cypher_position.oo_info.coin_total != 0
                     {
-                        info!("[LIQ] Liqee: {} - User has token borrows and coin unsettled funds. Asset: {} - Coin Total: {} - Must cancel orders and settle funds before liquidating.", cypher_user_pubkey, cypher_token.mint, asset.oo_info.coin_total);
+                        info!("[LIQ] Liqee: {} - User has token borrows and coin unsettled funds. Asset: {} - Coin Total: {} - Must cancel orders and settle funds before liquidating.", cypher_user_pubkey, cypher_token.mint, cypher_position.oo_info.coin_total);
 
                         return LiquidationCheck {
                             can_liquidate: true,
                             open_orders: !open_orders.is_empty(),
-                            unsettled_funds: asset.oo_info.coin_free != 0,
+                            unsettled_funds: cypher_position.oo_info.coin_free != 0,
                             open_orders_pubkey,
                             market_index: market_idx,
                             orders: open_orders,
                         };
                     }
 
-                    if has_quote_borrows && asset.oo_info.pc_total != 0 {
-                        info!("[LIQ] Liqee: {} - User has quote borrows and price coin funds. Asset: {} - Price Coin Total: {} - Must cancel orders and settle funds before liquidating.", cypher_user_pubkey, quote_mint::id(), asset.oo_info.pc_total);
+                    if has_quote_borrows && cypher_position.oo_info.pc_total != 0 {
+                        info!("[LIQ] Liqee: {} - User has quote borrows and price coin funds. Asset: {} - Price Coin Total: {} - Must cancel orders and settle funds before liquidating.", cypher_user_pubkey, quote_mint::id(), cypher_position.oo_info.pc_total);
 
                         return LiquidationCheck {
                             can_liquidate: true,
                             open_orders: !open_orders.is_empty(),
-                            unsettled_funds: asset.oo_info.pc_free != 0,
+                            unsettled_funds: cypher_position.oo_info.pc_free != 0,
                             open_orders_pubkey,
                             market_index: market_idx,
                             orders: open_orders,
