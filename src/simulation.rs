@@ -4,7 +4,6 @@ use cypher::{
     states::{CypherGroup, CypherUser},
 };
 use jet_proto_math::Number;
-use solana_account_decoder::parse_token::UiTokenAmount;
 use solana_sdk::pubkey::Pubkey;
 use std::cmp::min;
 

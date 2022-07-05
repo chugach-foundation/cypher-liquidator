@@ -15,7 +15,6 @@ use tokio::{
 pub struct ChainMetaService {
     client: Arc<RpcClient>,
     recent_blockhash: RwLock<Hash>,
-    slot: RwLock<u64>,
     shutdown_receiver: Mutex<Receiver<bool>>,
 }
 
@@ -24,7 +23,6 @@ impl ChainMetaService {
         Self {
             client: Arc::new(RpcClient::new("http://localhost:8899".to_string())),
             recent_blockhash: RwLock::new(Hash::default()),
-            slot: RwLock::new(u64::default()),
             shutdown_receiver: Mutex::new(channel::<bool>(1).1),
         }
     }
@@ -52,17 +50,6 @@ impl ChainMetaService {
         };
         info!("[CMS] Fetched recent block hash: {}", hash.0.to_string());
         *self.recent_blockhash.write().await = hash.0;
-
-        let slot_res = self.client.get_slot().await;
-        let slot = match slot_res {
-            Ok(slot) => slot,
-            Err(e) => {
-                warn!("[CMS] Failed to fetch recent slot: {}", e.to_string());
-                return Err(e);
-            }
-        };
-        info!("[CMS] Fetched recent slot: {}", slot);
-        *self.slot.write().await = slot;
 
         Ok(())
     }
@@ -100,10 +87,5 @@ impl ChainMetaService {
     #[inline(always)]
     pub async fn get_latest_blockhash(self: &Arc<Self>) -> Hash {
         *self.recent_blockhash.read().await
-    }
-
-    #[inline(always)]
-    pub async fn get_latest_slot(&self) -> u64 {
-        *self.slot.read().await
     }
 }
