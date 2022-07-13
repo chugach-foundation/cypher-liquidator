@@ -516,8 +516,8 @@ impl Liquidator {
 
         if margin_c_ratio < margin_maint_ratio {
             info!(
-                "[LIQ] Liqee: {} - Margin C Ratio below Margin Maintenance Ratio.",
-                cypher_user_pubkey
+                "[LIQ] Liqee: {} - Margin C Ratio below Margin Maintenance Ratio. C Ratio: {}",
+                cypher_user_pubkey, margin_c_ratio,
             );
 
             if cypher_user.is_bankrupt(cypher_group).unwrap() {
