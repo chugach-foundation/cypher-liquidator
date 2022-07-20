@@ -299,7 +299,7 @@ impl Liquidator {
     ) -> (bool, Pubkey, Pubkey) {
         let cypher_group_config = self
             .cypher_config
-            .get_group(self.liquidator_config.cluster.as_str())
+            .get_group(self.liquidator_config.group.as_str())
             .unwrap();
         let tokens = &cypher_group_config.tokens;
         let mut highest_borrow: Number = Number::ZERO;
@@ -456,7 +456,7 @@ impl Liquidator {
     async fn check_can_liquidate(self: &Arc<Self>, cypher_group: &CypherGroup) -> bool {
         let cypher_group_config = self
             .cypher_config
-            .get_group(self.liquidator_config.cluster.as_str())
+            .get_group(self.liquidator_config.group.as_str())
             .unwrap();
         let tokens = &cypher_group_config.tokens;
         let maybe_cypher_liqor = self.cypher_liqor.read().await;
@@ -507,7 +507,7 @@ impl Liquidator {
     ) -> LiquidationCheck {
         let cypher_group_config = self
             .cypher_config
-            .get_group(self.liquidator_config.cluster.as_str())
+            .get_group(self.liquidator_config.group.as_str())
             .unwrap();
         let tokens = &cypher_group_config.tokens;
         let margin_maint_ratio = cypher_group.margin_maint_ratio();

@@ -49,10 +49,10 @@ async fn main() -> Result<(), LiquidatorError> {
     let pubkey = keypair.pubkey();
     info!("Loaded keypair with pubkey: {}.", pubkey.to_string());
 
-    let cluster_config = cypher_config.get_config_for_cluster(liquidator_config.cluster.as_str());
+    let cluster_config = cypher_config.get_config_for_cluster(liquidator_config.group.as_str());
     let cypher_group_config = Arc::new(
         cypher_config
-            .get_group(liquidator_config.cluster.as_str())
+            .get_group(liquidator_config.group.as_str())
             .unwrap(),
     );
 
@@ -60,8 +60,8 @@ async fn main() -> Result<(), LiquidatorError> {
 
     // initialize rpc client with cluster and cluster url provided in config
     info!(
-        "Initializing rpc client for cluster-{} with url: {}.",
-        liquidator_config.cluster, cluster_config.rpc_url
+        "Initializing rpc client for group-{} with url: {}.",
+        liquidator_config.group, cluster_config.rpc_url
     );
     let rpc_client = Arc::new(RpcClient::new_with_commitment(
         cluster_config.rpc_url.to_string(),

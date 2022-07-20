@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 #[serde(rename_all = "camelCase")]
 pub struct LiquidatorConfig {
     pub wallet: String,
-    pub cluster: String,
+    pub group: String,
     pub log_simulations: bool,
     pub log_liqee_healths: bool,
     pub log_liqor_health: bool,
