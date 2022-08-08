@@ -1,19 +1,21 @@
-use cypher::{client::{parse_dex_account, gen_dex_vault_signer_key, derive_dex_market_authority, cancel_order_ix, ToPubkey, settle_funds_ix, liquidate_collateral_ix}, CypherGroup, CypherMarket, CypherToken};
-use serum_dex::{
-    instruction::{CancelOrderInstructionV2, MarketInstruction},
-    matching::Side,
-    state::{MarketStateV2, OpenOrders},
-};
-use solana_client::{client_error::ClientError, nonblocking::rpc_client::RpcClient};
-use solana_sdk::{
-    commitment_config::CommitmentConfig,
-    instruction::{AccountMeta, Instruction},
-    pubkey::Pubkey, signer::Signer,
-};
-use std::{convert::identity, sync::Arc};
 use {
+    cypher::{
+        client::{cancel_order_ix, liquidate_collateral_ix, settle_funds_ix, ToPubkey},
+        utils::{derive_dex_market_authority, gen_dex_vault_signer_key, parse_dex_account},
+        CypherGroup, CypherMarket, CypherToken,
+    },
     log::warn,
-    solana_sdk::signature::Keypair,
+    serum_dex::{
+        instruction::CancelOrderInstructionV2,
+        matching::Side,
+        state::{MarketStateV2, OpenOrders},
+    },
+    solana_client::{client_error::ClientError, nonblocking::rpc_client::RpcClient},
+    solana_sdk::{
+        commitment_config::CommitmentConfig, instruction::Instruction, pubkey::Pubkey,
+        signature::Keypair, signer::Signer,
+    },
+    std::{convert::identity, sync::Arc},
     std::{error::Error, fs::File, io::Read, str::FromStr},
 };
 
@@ -141,7 +143,7 @@ pub fn get_liquidate_collateral_ixs(
         &signer.pubkey(),
         liqee_pubkey,
         asset_mint,
-        liab_mint
+        liab_mint,
     )
 }
 
@@ -154,7 +156,10 @@ pub fn get_settle_funds_ix(
     cypher_user_pubkey: &Pubkey,
     signer: &Keypair,
 ) -> Instruction {
-    let dex_vault_signer = gen_dex_vault_signer_key(dex_market_state.vault_signer_nonce, &cypher_market.dex_market);
+    let dex_vault_signer = gen_dex_vault_signer_key(
+        dex_market_state.vault_signer_nonce,
+        &cypher_market.dex_market,
+    );
     settle_funds_ix(
         &cypher_group.self_address,
         &cypher_group.vault_signer,
@@ -182,7 +187,10 @@ pub fn get_cancel_order_ix(
     signer: &Keypair,
     ix_data: CancelOrderInstructionV2,
 ) -> Instruction {
-    let dex_vault_signer = gen_dex_vault_signer_key(dex_market_state.vault_signer_nonce, &cypher_market.dex_market);
+    let dex_vault_signer = gen_dex_vault_signer_key(
+        dex_market_state.vault_signer_nonce,
+        &cypher_market.dex_market,
+    );
     let prune_authority = derive_dex_market_authority(&cypher_market.dex_market);
     cancel_order_ix(
         &cypher_group.self_address,
@@ -201,6 +209,6 @@ pub fn get_cancel_order_ix(
         &identity(dex_market_state.coin_vault).to_pubkey(),
         &identity(dex_market_state.pc_vault).to_pubkey(),
         &dex_vault_signer,
-        ix_data
+        ix_data,
     )
 }

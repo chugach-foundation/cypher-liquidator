@@ -906,7 +906,7 @@ dependencies = [
 [[package]]
 name = "cypher"
 version = "0.1.0"
-source = "git+https://github.com/chugach-foundation/cypher-cpi.git?rev=e9d62ca#e9d62caec8f1ae2448749cda3eaec39e92d62f1e"
+source = "git+https://github.com/chugach-foundation/cypher-cpi.git?rev=2065a76#2065a76f5ad29718ca0b7c4a9c22e23d51e660b7"
 dependencies = [
  "anchor-gen",
  "anchor-lang",
@@ -1275,7 +1275,7 @@ dependencies = [
 [[package]]
 name = "faucet"
 version = "0.1.0"
-source = "git+https://github.com/chugach-foundation/cypher-cpi.git?rev=e9d62ca#e9d62caec8f1ae2448749cda3eaec39e92d62f1e"
+source = "git+https://github.com/chugach-foundation/cypher-cpi.git?rev=2065a76#2065a76f5ad29718ca0b7c4a9c22e23d51e660b7"
 dependencies = [
  "anchor-gen",
  "anchor-lang",

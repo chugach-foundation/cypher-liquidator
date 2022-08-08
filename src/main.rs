@@ -7,22 +7,23 @@ mod logging;
 mod simulation;
 mod utils;
 
-use chain_meta_service::ChainMetaService;
-use config::*;
-use cypher::client::derive_cypher_user_address;
-use cypher_account_service::{CypherAccountService, CypherUserWrapper};
-use liquidator::*;
-use logging::*;
-use utils::*;
-
-use clap::Parser;
-use log::{info, warn};
-use solana_client::nonblocking::rpc_client::RpcClient;
-use solana_sdk::{
-    commitment_config::CommitmentConfig, pubkey::Pubkey, signature::Keypair, signer::Signer,
+use {
+    chain_meta_service::ChainMetaService,
+    clap::Parser,
+    config::*,
+    cypher::utils::derive_cypher_user_address,
+    cypher_account_service::{CypherAccountService, CypherUserWrapper},
+    liquidator::*,
+    log::{info, warn},
+    logging::*,
+    solana_client::nonblocking::rpc_client::RpcClient,
+    solana_sdk::{
+        commitment_config::CommitmentConfig, pubkey::Pubkey, signature::Keypair, signer::Signer,
+    },
+    std::{str::FromStr, sync::Arc},
+    tokio::sync::broadcast::{channel, Sender},
+    utils::*,
 };
-use std::{str::FromStr, sync::Arc};
-use tokio::sync::broadcast::{channel, Sender};
 
 pub const CYPHER_CONFIG_PATH: &str = "./cfg/group.json";
 

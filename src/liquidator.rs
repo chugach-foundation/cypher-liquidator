@@ -1,37 +1,36 @@
-use cypher::{CypherGroup, CypherUser, CypherMarket, client::{derive_open_orders_address, get_zero_copy_account}, constants::QUOTE_TOKEN_IDX};
-use jet_proto_math::Number;
-use log::{info, warn};
-use serum_dex::instruction::CancelOrderInstructionV2;
-use solana_client::{
-    client_error::ClientError, nonblocking::rpc_client::RpcClient, rpc_config::RpcTransactionConfig,
-};
-use solana_sdk::{
-    commitment_config::CommitmentConfig,
-    compute_budget::{self, ComputeBudgetInstruction},
-    hash::Hash,
-    instruction::Instruction,
-    pubkey::Pubkey,
-    signature::Keypair,
-    transaction::Transaction,
-};
-use solana_transaction_status::UiTransactionEncoding;
-use std::{sync::Arc, time::Duration};
-use tokio::sync::{
-    broadcast::{Receiver, Sender},
-    Mutex, RwLock,
-};
-
-use crate::{
-    chain_meta_service::ChainMetaService,
-    config::{cypher_config::CypherConfig, liquidator_config::LiquidatorConfig},
-    cypher_account_service::CypherUserWrapper,
-    fast_tx_builder::FastTxnBuilder,
-    simulation::simulate_liquidate_collateral,
-    utils::{
-        get_cancel_order_ix, get_liquidate_collateral_ixs,
-        get_open_orders, get_serum_market,
-        get_serum_open_orders, get_settle_funds_ix,
-        OpenOrder,
+use {
+    crate::{
+        chain_meta_service::ChainMetaService,
+        config::{cypher_config::CypherConfig, liquidator_config::LiquidatorConfig},
+        cypher_account_service::CypherUserWrapper,
+        fast_tx_builder::FastTxnBuilder,
+        simulation::simulate_liquidate_collateral,
+        utils::{
+            get_cancel_order_ix, get_liquidate_collateral_ixs, get_open_orders, get_serum_market,
+            get_serum_open_orders, get_settle_funds_ix, OpenOrder,
+        },
+    },
+    cypher::{
+        constants::QUOTE_TOKEN_IDX,
+        utils::{derive_open_orders_address, get_zero_copy_account},
+        CypherGroup, CypherMarket, CypherUser,
+    },
+    jet_proto_math::Number,
+    log::{info, warn},
+    serum_dex::instruction::CancelOrderInstructionV2,
+    solana_client::{
+        client_error::ClientError, nonblocking::rpc_client::RpcClient,
+        rpc_config::RpcTransactionConfig,
+    },
+    solana_sdk::{
+        commitment_config::CommitmentConfig, hash::Hash, instruction::Instruction, pubkey::Pubkey,
+        signature::Keypair, transaction::Transaction,
+    },
+    solana_transaction_status::UiTransactionEncoding,
+    std::{sync::Arc, time::Duration},
+    tokio::sync::{
+        broadcast::{Receiver, Sender},
+        Mutex, RwLock,
     },
 };
 
@@ -186,13 +185,7 @@ impl Liquidator {
             if check.open_orders {
                 let cypher_market = cypher_group.get_cypher_market(check.market_index).unwrap();
                 let res = self
-                    .cancel_user_orders(
-                        cypher_group,
-                        cypher_market,
-                        cypher_user,
-                        cypher_user_pubkey,
-                        &check,
-                    )
+                    .cancel_user_orders(cypher_group, cypher_market, cypher_user_pubkey, &check)
                     .await;
                 match res {
                     Ok(_) => (),
@@ -209,13 +202,7 @@ impl Liquidator {
                 // settle user funds before attempting to liquidate
                 let cypher_market = cypher_group.get_cypher_market(check.market_index).unwrap();
                 let res = self
-                    .settle_user_funds(
-                        cypher_group,
-                        cypher_market,
-                        cypher_user,
-                        cypher_user_pubkey,
-                        &check,
-                    )
+                    .settle_user_funds(cypher_group, cypher_market, cypher_user_pubkey, &check)
                     .await;
                 match res {
                     Ok(_) => (),
@@ -352,15 +339,6 @@ impl Liquidator {
         let mut txn_builder = FastTxnBuilder::new();
         let mut submitted: bool = false;
         let mut prev_tx: Transaction = Transaction::default();
-
-        txn_builder.add(Instruction::new_with_borsh(
-            compute_budget::id(),
-            &ComputeBudgetInstruction::RequestUnitsDeprecated {
-                units: 500_000_u32,
-                additional_fee: 5_000_u32,
-            },
-            vec![],
-        ));
 
         for ix in ixs {
             let tx = txn_builder.build(blockhash, &self.keypair, None);
@@ -621,7 +599,6 @@ impl Liquidator {
         self: &Arc<Self>,
         cypher_group: &CypherGroup,
         cypher_market: &CypherMarket,
-        cypher_user: &CypherUser,
         cypher_user_pubkey: &Pubkey,
         check: &LiquidationCheck,
     ) -> Result<(), ClientError> {
@@ -637,7 +614,7 @@ impl Liquidator {
             &dex_market_state,
             &check.open_orders_pubkey,
             cypher_user_pubkey,
-            &self.keypair
+            &self.keypair,
         );
         let ixs = vec![settle_ix];
 
@@ -650,7 +627,6 @@ impl Liquidator {
         self: &Arc<Self>,
         cypher_group: &CypherGroup,
         cypher_market: &CypherMarket,
-        cypher_user: &CypherUser,
         cypher_user_pubkey: &Pubkey,
         check: &LiquidationCheck,
     ) -> Result<(), ClientError> {

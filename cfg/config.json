@@ -1,5 +1,5 @@
 {
-    "wallet": "C:\\Users\\warde\\.config\\solana\\default-id.json",
+    "wallet": "/Users/hoak/.config/solana/liquidator.json",
     "group": "devnet2",
     "logSimulations": false,
     "logLiqeeHealths": false,

@@ -1,7 +1,9 @@
-use cypher::{CypherGroup, CypherUser, quote_mint, constants::QUOTE_TOKEN_IDX};
-use jet_proto_math::Number;
-use solana_sdk::pubkey::Pubkey;
-use std::cmp::min;
+use {
+    cypher::{constants::QUOTE_TOKEN_IDX, quote_mint, CypherGroup, CypherUser},
+    jet_proto_math::Number,
+    solana_sdk::pubkey::Pubkey,
+    std::cmp::min,
+};
 
 pub fn simulate_liquidate_collateral(
     cypher_group: &CypherGroup,
