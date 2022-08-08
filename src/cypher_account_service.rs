@@ -158,7 +158,7 @@ impl CypherAccountService {
                 bytes: MemcmpEncodedBytes::Base58(self.cypher_group_pubkey.to_string()),
                 encoding: Some(MemcmpEncoding::Binary),
             }),
-            RpcFilterType::DataSize(2208),
+            RpcFilterType::DataSize(1952),
         ]);
 
         let accounts_res = self
