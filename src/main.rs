@@ -9,6 +9,7 @@ mod utils;
 
 use chain_meta_service::ChainMetaService;
 use config::*;
+use cypher::client::derive_cypher_user_address;
 use cypher_account_service::{CypherAccountService, CypherUserWrapper};
 use liquidator::*;
 use logging::*;
@@ -68,7 +69,7 @@ async fn main() -> Result<(), LiquidatorError> {
         CommitmentConfig::processed(),
     ));
 
-    let cypher_liqor_pubkey = derive_cypher_user_address(&cypher_group_key, &pubkey);
+    let cypher_liqor_pubkey = derive_cypher_user_address(&cypher_group_key, &pubkey).0;
 
     let (shutdown_send, mut _shutdown_recv) = channel::<bool>(1);
 

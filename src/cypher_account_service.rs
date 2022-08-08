@@ -1,4 +1,5 @@
-use cypher::states::CypherUser;
+use cypher::CypherUser;
+use cypher::client::get_zero_copy_account;
 use dashmap::DashMap;
 use log::{info, warn};
 use solana_account_decoder::{UiAccountEncoding, UiDataSliceConfig};
@@ -12,7 +13,6 @@ use std::sync::Arc;
 use tokio::sync::broadcast::{channel, Sender};
 use tokio::time::Duration;
 
-use crate::utils::get_zero_copy_account;
 
 #[derive(Clone)]
 pub struct CypherUserWrapper {

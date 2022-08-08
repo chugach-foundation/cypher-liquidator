@@ -1,8 +1,4 @@
-use cypher::{
-    constants::QUOTE_TOKEN_IDX,
-    quote_mint,
-    states::{CypherGroup, CypherUser},
-};
+use cypher::{CypherGroup, CypherUser, quote_mint, constants::QUOTE_TOKEN_IDX};
 use jet_proto_math::Number;
 use solana_sdk::pubkey::Pubkey;
 use std::cmp::min;
@@ -28,7 +24,7 @@ fn get_token_info(group: &CypherGroup, token_mint: Pubkey) -> (usize, u64) {
         return (QUOTE_TOKEN_IDX, 1_u64);
     }
     let token_idx = group.get_token_idx(token_mint).unwrap();
-    let market = group.get_cypher_market(token_idx);
+    let market = group.get_cypher_market(token_idx).unwrap();
     (token_idx, market.market_price)
 }
 
@@ -46,18 +42,18 @@ fn calc_collateral_liquidation(
     let liqor_fee = group.liq_liqor_fee();
     let insurance_fee = group.liq_insurance_fee();
     let excess_liabs_value = {
-        let assets_value = liqee_user.get_assets_value(group).unwrap();
-        let liabs_value = liqee_user.get_liabs_value(group).unwrap();
+        let assets_value = liqee_user.get_assets_value(group);
+        let liabs_value = liqee_user.get_liabilities_value(group);
         (liabs_value * target_ratio - assets_value) / (target_ratio - liqor_fee - insurance_fee)
     };
     let loan_value_in_position = liqee_user
         .get_position(liab_token_idx)
         .unwrap()
-        .total_borrows(group.get_cypher_token(liab_token_idx))
+        .total_borrows(group.get_cypher_token(liab_token_idx).unwrap())
         * liab_price;
     let max_repay_value = min(excess_liabs_value, loan_value_in_position);
 
-    let is_bankrupt = liqee_user.is_bankrupt(group).unwrap();
+    let is_bankrupt = liqee_user.is_bankrupt(group);
     if is_bankrupt {
         assert_eq!(asset_mint, quote_mint::ID);
         if liab_mint == quote_mint::ID {
@@ -72,7 +68,7 @@ fn calc_collateral_liquidation(
         let asset_position_value = liqee_user
             .get_position(asset_token_idx)
             .unwrap()
-            .total_deposits(group.get_cypher_token(asset_token_idx))
+            .total_deposits(group.get_cypher_token(asset_token_idx).unwrap())
             .as_u64(0)
             * asset_price;
         Number::from(asset_position_value) / (liqor_fee + insurance_fee)
@@ -80,7 +76,7 @@ fn calc_collateral_liquidation(
     let liqor_repay_position_value = liqor_user
         .get_position(liab_token_idx)
         .unwrap()
-        .total_deposits(group.get_cypher_token(liab_token_idx))
+        .total_deposits(group.get_cypher_token(liab_token_idx).unwrap())
         * liab_price;
     let max_liab_swap_value = min(liqor_repay_position_value, max_value_for_swap);
 

@@ -1,8 +1,4 @@
-use cypher::{
-    constants::QUOTE_TOKEN_IDX,
-    quote_mint,
-    states::{CypherGroup, CypherMarket, CypherUser},
-};
+use cypher::{CypherGroup, CypherUser, CypherMarket, client::{derive_open_orders_address, get_zero_copy_account}, constants::QUOTE_TOKEN_IDX};
 use jet_proto_math::Number;
 use log::{info, warn};
 use serum_dex::instruction::CancelOrderInstructionV2;
@@ -32,9 +28,9 @@ use crate::{
     fast_tx_builder::FastTxnBuilder,
     simulation::simulate_liquidate_collateral,
     utils::{
-        derive_open_orders_address, get_cancel_order_ix, get_liquidate_collateral_ixs,
+        get_cancel_order_ix, get_liquidate_collateral_ixs,
         get_open_orders, get_serum_market,
-        get_serum_open_orders, get_settle_funds_ix, get_zero_copy_account,
+        get_serum_open_orders, get_settle_funds_ix,
         OpenOrder,
     },
 };
@@ -188,7 +184,7 @@ impl Liquidator {
             );
 
             if check.open_orders {
-                let cypher_market = cypher_group.get_cypher_market(check.market_index);
+                let cypher_market = cypher_group.get_cypher_market(check.market_index).unwrap();
                 let res = self
                     .cancel_user_orders(
                         cypher_group,
@@ -211,7 +207,7 @@ impl Liquidator {
             if check.unsettled_funds {
                 // TODO: optimize to settle multiple accounts at once
                 // settle user funds before attempting to liquidate
-                let cypher_market = cypher_group.get_cypher_market(check.market_index);
+                let cypher_market = cypher_group.get_cypher_market(check.market_index).unwrap();
                 let res = self
                     .settle_user_funds(
                         cypher_group,
@@ -266,7 +262,7 @@ impl Liquidator {
 
                     info!("[LIQ] Liqee: {} - Asset Mint: {} - Liab Mint: {} - Attempting to liquidate.", cypher_user_pubkey, asset_mint, liab_mint);
 
-                    let liq_ixs = get_liquidate_collateral_ixs(
+                    let liq_ix = get_liquidate_collateral_ixs(
                         cypher_group,
                         &asset_mint,
                         &liab_mint,
@@ -277,7 +273,7 @@ impl Liquidator {
 
                     let blockhash = self.chain_meta_service.get_latest_blockhash().await;
 
-                    let res = self.submit_transactions(liq_ixs, blockhash).await;
+                    let res = self.submit_transactions([liq_ix].to_vec(), blockhash).await;
                     match res {
                         Ok(_) => (),
                         Err(e) => {
@@ -308,23 +304,23 @@ impl Liquidator {
         let mut liab_mint: Pubkey = Pubkey::default();
 
         for token in tokens {
-            let cypher_token = cypher_group.get_cypher_token(token.token_index);
+            let cypher_token = cypher_group.get_cypher_token(token.token_index).unwrap();
             let maybe_liqee_cp = liqee_user.get_position(token.token_index);
             let (liqee_borrows, liqee_deposits) = match maybe_liqee_cp {
-                Ok(cp) => (
+                Some(cp) => (
                     cp.total_borrows(cypher_token),
                     cp.total_deposits(cypher_token),
                 ),
-                Err(_) => (Number::ZERO, Number::ZERO),
+                None => (Number::ZERO, Number::ZERO),
             };
 
             let maybe_liqor_cp = liqor_user.get_position(token.token_index);
             let (_, liqor_deposits) = match maybe_liqor_cp {
-                Ok(cp) => (
+                Some(cp) => (
                     cp.total_borrows(cypher_token),
                     cp.total_deposits(cypher_token),
                 ),
-                Err(_) => (Number::ZERO, Number::ZERO),
+                None => (Number::ZERO, Number::ZERO),
             };
 
             if liqee_borrows >= Number::ZERO
@@ -465,7 +461,7 @@ impl Liquidator {
         }
         let cypher_liqor = maybe_cypher_liqor.unwrap();
         let margin_init_ratio = cypher_group.margin_init_ratio();
-        let margin_c_ratio = cypher_liqor.get_margin_c_ratio(cypher_group).unwrap();
+        let margin_c_ratio = cypher_liqor.get_margin_c_ratio(cypher_group);
 
         info!(
             "[LIQ] LIQOR: {} - Margin C Ratio: {} - Margin Init Ratio: {}",
@@ -474,11 +470,11 @@ impl Liquidator {
 
         if self.liquidator_config.log_liqor_health {
             for token in tokens {
-                let cypher_token = cypher_group.get_cypher_token(token.token_index);
+                let cypher_token = cypher_group.get_cypher_token(token.token_index).unwrap();
                 let maybe_cp = cypher_liqor.get_position(token.token_index);
                 let cypher_position = match maybe_cp {
-                    Ok(cp) => cp,
-                    Err(_) => {
+                    Some(cp) => cp,
+                    None => {
                         continue;
                     }
                 };
@@ -512,7 +508,7 @@ impl Liquidator {
         let tokens = &cypher_group_config.tokens;
         let margin_maint_ratio = cypher_group.margin_maint_ratio();
 
-        let margin_c_ratio = cypher_user.get_margin_c_ratio(cypher_group).unwrap();
+        let margin_c_ratio = cypher_user.get_margin_c_ratio(cypher_group);
 
         if margin_c_ratio < margin_maint_ratio {
             info!(
@@ -520,7 +516,7 @@ impl Liquidator {
                 cypher_user_pubkey, margin_c_ratio,
             );
 
-            if cypher_user.is_bankrupt(cypher_group).unwrap() {
+            if cypher_user.is_bankrupt(cypher_group) {
                 info!("[LIQ] Liqee: {} - USER IS BANKRUPT!", cypher_user_pubkey);
             }
 
@@ -530,17 +526,17 @@ impl Liquidator {
             for position in cypher_user.iter_positions() {
                 if position.oo_info.is_account_open {
                     let market_idx = position.market_idx as usize;
-                    let cypher_market = cypher_group.get_cypher_market(market_idx);
-                    let cypher_token = cypher_group.get_cypher_token(market_idx);
+                    let cypher_market = cypher_group.get_cypher_market(market_idx).unwrap();
+                    let cypher_token = cypher_group.get_cypher_token(market_idx).unwrap();
                     let maybe_cp = cypher_user.get_position(market_idx);
                     let cypher_position = match maybe_cp {
-                        Ok(cp) => cp,
-                        Err(_) => {
+                        Some(cp) => cp,
+                        None => {
                             continue;
                         }
                     };
                     let open_orders_pubkey =
-                        derive_open_orders_address(&cypher_market.dex_market, cypher_user_pubkey);
+                        derive_open_orders_address(&cypher_market.dex_market, cypher_user_pubkey).0;
                     let maybe_ooa =
                         get_serum_open_orders(Arc::clone(&self.client), &open_orders_pubkey).await;
                     let open_orders_account = match maybe_ooa {
@@ -576,7 +572,7 @@ impl Liquidator {
                     }
 
                     if has_quote_borrows && cypher_position.oo_info.pc_total != 0 {
-                        info!("[LIQ] Liqee: {} - User has quote borrows and price coin funds. Asset: {} - Price Coin Total: {} - Must cancel orders and settle funds before liquidating.", cypher_user_pubkey, quote_mint::id(), cypher_position.oo_info.pc_total);
+                        info!("[LIQ] Liqee: {} - User has quote borrows and price coin funds. Asset: {} - Price Coin Total: {} - Must cancel orders and settle funds before liquidating.", cypher_user_pubkey, cypher::quote_mint::id(), cypher_position.oo_info.pc_total);
 
                         return LiquidationCheck {
                             can_liquidate: true,
@@ -592,11 +588,11 @@ impl Liquidator {
 
             if self.liquidator_config.log_liqee_healths {
                 for token in tokens {
-                    let cypher_token = cypher_group.get_cypher_token(token.token_index);
+                    let cypher_token = cypher_group.get_cypher_token(token.token_index).unwrap();
                     let maybe_cp = cypher_user.get_position(token.token_index);
                     let cypher_position = match maybe_cp {
-                        Ok(cp) => cp,
-                        Err(_) => {
+                        Some(cp) => cp,
+                        None => {
                             continue;
                         }
                     };
@@ -633,14 +629,15 @@ impl Liquidator {
             get_serum_market(Arc::clone(&self.client), &cypher_market.dex_market)
                 .await
                 .unwrap();
-
+        let cypher_token = cypher_group.get_cypher_token(check.market_index).unwrap();
         let settle_ix = get_settle_funds_ix(
             cypher_group,
+            cypher_market,
+            cypher_token,
             &dex_market_state,
-            cypher_user_pubkey,
             &check.open_orders_pubkey,
-            &cypher_user.user_signer,
-            check.market_index,
+            cypher_user_pubkey,
+            &self.keypair
         );
         let ixs = vec![settle_ix];
 
@@ -662,7 +659,7 @@ impl Liquidator {
                 .await
                 .unwrap();
 
-        let cypher_token = cypher_group.get_cypher_token(check.market_index);
+        let cypher_token = cypher_group.get_cypher_token(check.market_index).unwrap();
 
         let mut ixs = Vec::new();
 
@@ -674,7 +671,7 @@ impl Liquidator {
                 &dex_market_state,
                 &check.open_orders_pubkey,
                 cypher_user_pubkey,
-                &cypher_user.user_signer,
+                &self.keypair,
                 CancelOrderInstructionV2 {
                     order_id: order.order_id,
                     side: order.side,
