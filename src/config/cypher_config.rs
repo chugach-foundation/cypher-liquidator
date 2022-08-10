@@ -1,9 +1,9 @@
 #![allow(dead_code)]
-use serde::{Deserialize, Serialize};
-use serde_json;
-use std::error::Error;
-use std::fs::File;
-use std::io::BufReader;
+use {
+    serde::{Deserialize, Serialize},
+    serde_json,
+    std::{error::Error, fs::File, io::BufReader},
+};
 
 #[derive(Debug, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -36,7 +36,7 @@ impl CypherConfig {
     }
 
     pub fn get_group(&self, cluster: &str) -> Option<&CypherGroupConfig> {
-        self.groups.iter().find(|&g| g.cluster.as_str() == cluster)
+        self.groups.iter().find(|&g| g.name.as_str() == cluster)
     }
 }
 
