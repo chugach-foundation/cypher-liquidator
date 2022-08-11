@@ -1,6 +1,6 @@
 use {
     cypher::{
-        client::{cancel_order_ix, liquidate_collateral_ix, settle_funds_ix, ToPubkey},
+        client::{cancel_order_v2_ix, liquidate_collateral_ix, settle_funds_ix, ToPubkey},
         utils::{derive_dex_market_authority, gen_dex_vault_signer_key, parse_dex_account},
         CypherGroup, CypherMarket, CypherToken,
     },
@@ -192,7 +192,7 @@ pub fn get_cancel_order_ix(
         &cypher_market.dex_market,
     );
     let prune_authority = derive_dex_market_authority(&cypher_market.dex_market);
-    cancel_order_ix(
+    cancel_order_v2_ix(
         &cypher_group.self_address,
         &cypher_group.vault_signer,
         cypher_user_pubkey,
