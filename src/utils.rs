@@ -1,45 +1,23 @@
-use anchor_lang::{Owner, ZeroCopy};
-use arrayref::array_ref;
-use bytemuck::{bytes_of, checked::from_bytes};
-use cypher::{
-    constants::{B_CYPHER_USER, B_DEX_MARKET_AUTHORITY, B_OPEN_ORDERS},
-    states::{CypherGroup, CypherMarket, CypherToken},
-};
-use cypher_tester::{dex, get_request_builder, parse_dex_account, ToPubkey};
-use serum_dex::{
-    instruction::{CancelOrderInstructionV2, MarketInstruction},
-    matching::Side,
-    state::{MarketStateV2, OpenOrders},
-};
-use solana_account_decoder::parse_token::UiTokenAmount;
-use solana_client::{client_error::ClientError, nonblocking::rpc_client::RpcClient};
-use solana_sdk::{
-    account::Account,
-    commitment_config::CommitmentConfig,
-    instruction::{AccountMeta, Instruction},
-    program_error::ProgramError,
-    pubkey::Pubkey,
-    signer::Signer,
-};
-use std::{convert::identity, sync::Arc};
-
 use {
+    cypher::{
+        client::{cancel_order_ix, liquidate_collateral_ix, settle_funds_ix, ToPubkey},
+        utils::{derive_dex_market_authority, gen_dex_vault_signer_key, parse_dex_account},
+        CypherGroup, CypherMarket, CypherToken,
+    },
     log::warn,
-    solana_sdk::signature::Keypair,
+    serum_dex::{
+        instruction::CancelOrderInstructionV2,
+        matching::Side,
+        state::{MarketStateV2, OpenOrders},
+    },
+    solana_client::{client_error::ClientError, nonblocking::rpc_client::RpcClient},
+    solana_sdk::{
+        commitment_config::CommitmentConfig, instruction::Instruction, pubkey::Pubkey,
+        signature::Keypair, signer::Signer,
+    },
+    std::{convert::identity, sync::Arc},
     std::{error::Error, fs::File, io::Read, str::FromStr},
 };
-
-pub fn derive_open_orders_address(dex_market_pk: &Pubkey, cypher_user_pk: &Pubkey) -> Pubkey {
-    Pubkey::find_program_address(
-        &[
-            B_OPEN_ORDERS,
-            dex_market_pk.as_ref(),
-            cypher_user_pk.as_ref(),
-        ],
-        &cypher::ID,
-    )
-    .0
-}
 
 pub async fn get_serum_market(
     client: Arc<RpcClient>,
@@ -87,28 +65,6 @@ pub async fn get_serum_open_orders(
     let dex_open_orders: OpenOrders = parse_dex_account(ai.data);
 
     Ok(dex_open_orders)
-}
-
-pub async fn get_token_account(
-    client: Arc<RpcClient>,
-    token_account: &Pubkey,
-) -> Result<UiTokenAmount, ClientError> {
-    let ta_res = client
-        .get_token_account_balance_with_commitment(token_account, CommitmentConfig::confirmed())
-        .await;
-
-    let ta = match ta_res {
-        Ok(ta) => ta.value,
-        Err(e) => {
-            warn!(
-                "There was an error while fetching the token account: {}",
-                e.to_string()
-            );
-            return Err(e);
-        }
-    };
-
-    Ok(ta)
 }
 
 pub struct OpenOrder {
@@ -173,62 +129,6 @@ pub fn load_keypair(path: &str) -> Result<Keypair, Box<dyn Error>> {
     }
 }
 
-pub fn derive_dex_market_authority(dex_market_pk: &Pubkey) -> (Pubkey, u8) {
-    Pubkey::find_program_address(
-        &[B_DEX_MARKET_AUTHORITY, dex_market_pk.as_ref()],
-        &cypher::ID,
-    )
-}
-
-pub fn gen_dex_vault_signer_key(
-    nonce: u64,
-    dex_market_pk: &Pubkey,
-) -> Result<Pubkey, ProgramError> {
-    let seeds = [dex_market_pk.as_ref(), bytes_of(&nonce)];
-    Ok(Pubkey::create_program_address(&seeds, &dex::id())?)
-}
-
-pub fn derive_cypher_user_address(group_address: &Pubkey, owner: &Pubkey) -> Pubkey {
-    Pubkey::find_program_address(
-        &[B_CYPHER_USER, group_address.as_ref(), &owner.to_bytes()],
-        &cypher::ID,
-    )
-    .0
-}
-
-pub fn get_zero_copy_account<T: ZeroCopy + Owner>(solana_account: &Account) -> Box<T> {
-    let data = &solana_account.data.as_slice();
-    let disc_bytes = array_ref![data, 0, 8];
-    assert_eq!(disc_bytes, &T::discriminator());
-    Box::new(*from_bytes::<T>(&data[8..std::mem::size_of::<T>() + 8]))
-}
-
-pub fn get_liquidate_market_collateral_ixs(
-    cypher_group: &CypherGroup,
-    cypher_market: &CypherMarket,
-    cypher_token: &CypherToken,
-    liqor_pubkey: &Pubkey,
-    liqee_pubkey: &Pubkey,
-    signer: &Keypair,
-) -> Vec<Instruction> {
-    let ixs = get_request_builder()
-        .accounts(cypher::accounts::LiquidateMarketCollateral {
-            cypher_group: cypher_group.self_address,
-            vault_signer: cypher_group.vault_signer,
-            minting_rounds: cypher_market.minting_rounds,
-            cypher_user: *liqor_pubkey,
-            user_signer: signer.pubkey(),
-            liqee_cypher_user: *liqee_pubkey,
-            c_asset_mint: cypher_token.mint,
-            cypher_c_asset_vault: cypher_token.vault,
-            token_program: spl_token::id(),
-        })
-        .args(cypher::instruction::LiquidateMarketCollateral {})
-        .instructions()
-        .unwrap();
-    ixs
-}
-
 pub fn get_liquidate_collateral_ixs(
     cypher_group: &CypherGroup,
     asset_mint: &Pubkey,
@@ -236,78 +136,44 @@ pub fn get_liquidate_collateral_ixs(
     liqor_pubkey: &Pubkey,
     liqee_pubkey: &Pubkey,
     signer: &Keypair,
-) -> Vec<Instruction> {
-    let ixs = get_request_builder()
-        .accounts(cypher::accounts::LiquidateCollateral {
-            cypher_group: cypher_group.self_address,
-            cypher_user: *liqor_pubkey,
-            user_signer: signer.pubkey(),
-            liqee_cypher_user: *liqee_pubkey,
-        })
-        .args(cypher::instruction::LiquidateCollateral {
-            asset_mint: *asset_mint,
-            liab_mint: *liab_mint,
-        })
-        .instructions()
-        .unwrap();
-    ixs
+) -> Instruction {
+    liquidate_collateral_ix(
+        &cypher_group.self_address,
+        liqor_pubkey,
+        &signer.pubkey(),
+        liqee_pubkey,
+        asset_mint,
+        liab_mint,
+    )
 }
 
 pub fn get_settle_funds_ix(
     cypher_group: &CypherGroup,
+    cypher_market: &CypherMarket,
+    cypher_token: &CypherToken,
     dex_market_state: &MarketStateV2,
-    cypher_user_pubkey: &Pubkey,
     open_orders_pubkey: &Pubkey,
-    user_signer: &Pubkey,
-    market_index: usize,
+    cypher_user_pubkey: &Pubkey,
+    signer: &Keypair,
 ) -> Instruction {
-    let accounts = get_settle_funds_accounts(
-        cypher_group,
-        dex_market_state,
-        cypher_user_pubkey,
-        open_orders_pubkey,
-        user_signer,
-        market_index,
-    );
-
-    Instruction {
-        program_id: cypher::ID,
-        accounts,
-        data: MarketInstruction::SettleFunds.pack(),
-    }
-}
-
-fn get_settle_funds_accounts(
-    cypher_group: &CypherGroup,
-    dex_market_state: &MarketStateV2,
-    cypher_user_pubkey: &Pubkey,
-    open_orders_pubkey: &Pubkey,
-    user_signer: &Pubkey,
-    market_index: usize,
-) -> Vec<AccountMeta> {
-    let cypher_market = cypher_group.get_cypher_market(market_index);
-    let cypher_token = cypher_group.get_cypher_token(market_index);
     let dex_vault_signer = gen_dex_vault_signer_key(
         dex_market_state.vault_signer_nonce,
         &cypher_market.dex_market,
+    );
+    settle_funds_ix(
+        &cypher_group.self_address,
+        &cypher_group.vault_signer,
+        cypher_user_pubkey,
+        &signer.pubkey(),
+        &cypher_token.mint,
+        &cypher_token.vault,
+        &cypher_group.quote_vault(),
+        &cypher_market.dex_market,
+        open_orders_pubkey,
+        &identity(dex_market_state.coin_vault).to_pubkey(),
+        &identity(dex_market_state.pc_vault).to_pubkey(),
+        &dex_vault_signer,
     )
-    .unwrap();
-    vec![
-        AccountMeta::new(cypher_group.self_address, false),
-        AccountMeta::new_readonly(cypher_group.vault_signer, false),
-        AccountMeta::new(*cypher_user_pubkey, false),
-        AccountMeta::new_readonly(*user_signer, false),
-        AccountMeta::new(cypher_token.mint, false),
-        AccountMeta::new(cypher_token.vault, false),
-        AccountMeta::new(cypher_group.quote_vault(), false),
-        AccountMeta::new(cypher_market.dex_market, false),
-        AccountMeta::new(*open_orders_pubkey, false),
-        AccountMeta::new(identity(dex_market_state.coin_vault).to_pubkey(), false),
-        AccountMeta::new(identity(dex_market_state.pc_vault).to_pubkey(), false),
-        AccountMeta::new_readonly(dex_vault_signer, false),
-        AccountMeta::new_readonly(spl_token::id(), false),
-        AccountMeta::new_readonly(dex::id(), false),
-    ]
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -318,58 +184,31 @@ pub fn get_cancel_order_ix(
     dex_market_state: &MarketStateV2,
     open_orders_pubkey: &Pubkey,
     cypher_user_pubkey: &Pubkey,
-    user_signer: &Pubkey,
+    signer: &Keypair,
     ix_data: CancelOrderInstructionV2,
 ) -> Instruction {
-    let accounts = get_cancel_orders_accounts(
-        cypher_group,
-        cypher_market,
-        cypher_token,
-        dex_market_state,
-        open_orders_pubkey,
-        cypher_user_pubkey,
-        user_signer,
-    );
-    Instruction {
-        program_id: cypher::ID,
-        accounts,
-        data: MarketInstruction::CancelOrderV2(ix_data).pack(),
-    }
-}
-
-fn get_cancel_orders_accounts(
-    cypher_group: &CypherGroup,
-    cypher_market: &CypherMarket,
-    cypher_token: &CypherToken,
-    dex_market_state: &MarketStateV2,
-    open_orders_pubkey: &Pubkey,
-    cypher_user_pubkey: &Pubkey,
-    user_signer: &Pubkey,
-) -> Vec<AccountMeta> {
     let dex_vault_signer = gen_dex_vault_signer_key(
         dex_market_state.vault_signer_nonce,
         &cypher_market.dex_market,
+    );
+    let prune_authority = derive_dex_market_authority(&cypher_market.dex_market);
+    cancel_order_ix(
+        &cypher_group.self_address,
+        &cypher_group.vault_signer,
+        cypher_user_pubkey,
+        &signer.pubkey(),
+        &cypher_token.mint,
+        &cypher_token.vault,
+        &cypher_group.quote_vault(),
+        &cypher_market.dex_market,
+        &prune_authority,
+        open_orders_pubkey,
+        &identity(dex_market_state.event_q).to_pubkey(),
+        &identity(dex_market_state.bids).to_pubkey(),
+        &identity(dex_market_state.asks).to_pubkey(),
+        &identity(dex_market_state.coin_vault).to_pubkey(),
+        &identity(dex_market_state.pc_vault).to_pubkey(),
+        &dex_vault_signer,
+        ix_data,
     )
-    .unwrap();
-    let prune_authority = derive_dex_market_authority(&cypher_market.dex_market).0;
-    vec![
-        AccountMeta::new(cypher_group.self_address, false),
-        AccountMeta::new_readonly(cypher_group.vault_signer, false),
-        AccountMeta::new(*cypher_user_pubkey, false),
-        AccountMeta::new_readonly(*user_signer, false),
-        AccountMeta::new(cypher_token.mint, false),
-        AccountMeta::new(cypher_token.vault, false),
-        AccountMeta::new(cypher_group.quote_vault(), false),
-        AccountMeta::new(cypher_market.dex_market, false),
-        AccountMeta::new_readonly(prune_authority, false),
-        AccountMeta::new(identity(dex_market_state.bids).to_pubkey(), false),
-        AccountMeta::new(identity(dex_market_state.asks).to_pubkey(), false),
-        AccountMeta::new(*open_orders_pubkey, false),
-        AccountMeta::new(identity(dex_market_state.event_q).to_pubkey(), false),
-        AccountMeta::new(identity(dex_market_state.coin_vault).to_pubkey(), false),
-        AccountMeta::new(identity(dex_market_state.pc_vault).to_pubkey(), false),
-        AccountMeta::new_readonly(dex_vault_signer, false),
-        AccountMeta::new_readonly(spl_token::id(), false),
-        AccountMeta::new_readonly(dex::id(), false),
-    ]
 }

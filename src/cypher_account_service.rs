@@ -1,18 +1,21 @@
-use cypher::states::CypherUser;
-use dashmap::DashMap;
-use log::{info, warn};
-use solana_account_decoder::{UiAccountEncoding, UiDataSliceConfig};
-use solana_client::rpc_config::{RpcAccountInfoConfig, RpcProgramAccountsConfig};
-use solana_client::rpc_filter::{Memcmp, MemcmpEncodedBytes, MemcmpEncoding, RpcFilterType};
-use solana_client::{client_error::ClientError, nonblocking::rpc_client::RpcClient};
-use solana_sdk::account::Account;
-use solana_sdk::commitment_config::CommitmentConfig;
-use solana_sdk::pubkey::Pubkey;
-use std::sync::Arc;
-use tokio::sync::broadcast::{channel, Sender};
-use tokio::time::Duration;
-
-use crate::utils::get_zero_copy_account;
+use {
+    cypher::{utils::get_zero_copy_account, CypherUser},
+    dashmap::DashMap,
+    log::{info, warn},
+    solana_account_decoder::{UiAccountEncoding, UiDataSliceConfig},
+    solana_client::{
+        client_error::ClientError,
+        nonblocking::rpc_client::RpcClient,
+        rpc_config::{RpcAccountInfoConfig, RpcProgramAccountsConfig},
+        rpc_filter::{Memcmp, MemcmpEncodedBytes, MemcmpEncoding, RpcFilterType},
+    },
+    solana_sdk::{account::Account, commitment_config::CommitmentConfig, pubkey::Pubkey},
+    std::sync::Arc,
+    tokio::{
+        sync::broadcast::{channel, Sender},
+        time::Duration,
+    },
+};
 
 #[derive(Clone)]
 pub struct CypherUserWrapper {
@@ -155,7 +158,7 @@ impl CypherAccountService {
                 bytes: MemcmpEncodedBytes::Base58(self.cypher_group_pubkey.to_string()),
                 encoding: Some(MemcmpEncoding::Binary),
             }),
-            RpcFilterType::DataSize(3960),
+            RpcFilterType::DataSize(1952),
         ]);
 
         let accounts_res = self
